@@ -1,0 +1,6 @@
+# Generated research outputs — don't commit these
+Dossier/
+research_terminal.db
+
+# Local secrets (API keys)
+.env
