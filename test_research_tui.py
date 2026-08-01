@@ -697,24 +697,24 @@ class SearchConfigTests(unittest.TestCase):
         st.search_max = research_tui.MAX_MAX
         self.assertEqual(research_tui.resolve_search_config(st)['max'], research_tui.MAX_MAX)
 
-    def test_scihub_is_always_on_regardless_of_depth(self):
-        # Sci-Hub is the always-on PDF fallback, decoupled from the depth knob:
-        # every depth level must request it (env unset → operator default-on).
+    def test_scihub_is_off_at_every_depth_by_default(self):
+        # Sci-Hub is opt-in and decoupled from the depth knob: turning the depth
+        # up must never enable it on its own (env unset → off).
         with mock.patch.dict('os.environ', {}, clear=False):
             import os as _os
             _os.environ.pop('DR_NEWPAPER_ALLOW_SCIHUB', None)
             for depth_idx in range(len(research_tui.DEPTH_LEVELS)):
                 cfg = research_tui.resolve_search_config(self._state(depth_idx=depth_idx))
-                self.assertTrue(cfg['allow_scihub'],
-                                f'Sci-Hub must be on at depth_idx={depth_idx}')
+                self.assertFalse(cfg['allow_scihub'],
+                                 f'Sci-Hub must stay off at depth_idx={depth_idx}')
 
-    def test_scihub_honours_operator_opt_out(self):
-        # An operator can still globally disable Sci-Hub via the env kill-switch;
-        # the TUI search config then propagates the opt-out (not depth-driven).
-        with mock.patch.dict('os.environ', {'DR_NEWPAPER_ALLOW_SCIHUB': '0'}):
+    def test_scihub_honours_operator_opt_in(self):
+        # An operator who opted in gets it at every depth — the TUI search config
+        # propagates the choice rather than deriving it from the depth knob.
+        with mock.patch.dict('os.environ', {'DR_NEWPAPER_ALLOW_SCIHUB': '1'}):
             for depth_idx in range(len(research_tui.DEPTH_LEVELS)):
                 cfg = research_tui.resolve_search_config(self._state(depth_idx=depth_idx))
-                self.assertFalse(cfg['allow_scihub'])
+                self.assertTrue(cfg['allow_scihub'])
 
     def test_config_adjust_clamps_each_focused_knob(self):
         st = self._state(search_max=1, sensitivity_idx=0, depth_idx=0)
@@ -2379,7 +2379,7 @@ class StudyReadingModeTests(unittest.TestCase):
 
 
 class ScihubEnabledTests(unittest.TestCase):
-    """config.scihub_enabled() is the single always-on / opt-out resolver."""
+    """config.scihub_enabled() is the single opt-in resolver."""
 
     def test_explicit_value_always_wins(self):
         with mock.patch.dict('os.environ', {'DR_NEWPAPER_ALLOW_SCIHUB': '0'}):
@@ -2387,21 +2387,22 @@ class ScihubEnabledTests(unittest.TestCase):
         with mock.patch.dict('os.environ', {'DR_NEWPAPER_ALLOW_SCIHUB': '1'}):
             self.assertFalse(config.scihub_enabled(False))  # explicit off beats env-on
 
-    def test_default_is_on_when_unset(self):
+    def test_default_is_off_when_unset(self):
         with mock.patch.dict('os.environ', {}, clear=False):
             import os as _os
             _os.environ.pop('DR_NEWPAPER_ALLOW_SCIHUB', None)
-            self.assertTrue(config.scihub_enabled())
-            self.assertTrue(config.scihub_enabled(None))
+            self.assertFalse(config.scihub_enabled())
+            self.assertFalse(config.scihub_enabled(None))
 
-    def test_operator_can_opt_out(self):
-        # …including whitespace-padded values — the kill-switch must fail safe.
-        for off in ('0', 'false', 'no', 'off', 'OFF', ' 0', '0 ', '  off ', 'false\n'):
-            with mock.patch.dict('os.environ', {'DR_NEWPAPER_ALLOW_SCIHUB': off}):
-                self.assertFalse(config.scihub_enabled(), f'{off!r} should disable')
-        for on in ('1', 'true', 'yes', 'on', ''):
+    def test_operator_must_opt_in(self):
+        # …including whitespace-padded values, which an .env can easily carry.
+        for on in ('1', 'true', 'yes', 'on', 'ON', ' 1', '1 ', '  on ', 'true\n'):
             with mock.patch.dict('os.environ', {'DR_NEWPAPER_ALLOW_SCIHUB': on}):
-                self.assertTrue(config.scihub_enabled(), f'{on!r} should keep it on')
+                self.assertTrue(config.scihub_enabled(), f'{on!r} should opt in')
+        # An allow-list, so anything unrecognised fails closed rather than on.
+        for off in ('0', 'false', 'no', 'off', '', 'maybe', '2'):
+            with mock.patch.dict('os.environ', {'DR_NEWPAPER_ALLOW_SCIHUB': off}):
+                self.assertFalse(config.scihub_enabled(), f'{off!r} should stay off')
 
 
 class MetaAnalysisSourcesTests(unittest.TestCase):

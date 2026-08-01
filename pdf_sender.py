@@ -53,9 +53,9 @@ PDF_LIBRARY_DIR = os.getenv(
 def _scihub_allowed(explicit: Optional[bool]) -> bool:
     """Resolve the Sci-Hub fallback at call time (never trust an import-time const).
 
-    Delegates to :func:`config.scihub_enabled`: Sci-Hub is the always-on PDF
-    fallback, so an unspecified caller gets it unless an operator opts out via
-    ``DR_NEWPAPER_ALLOW_SCIHUB=0``.
+    Delegates to :func:`config.scihub_enabled`: Sci-Hub is opt-in, so an
+    unspecified caller does *not* get it unless an operator opted in via
+    ``DR_NEWPAPER_ALLOW_SCIHUB=1``.
     """
     from config import scihub_enabled
     return scihub_enabled(explicit)
@@ -281,8 +281,8 @@ def download_pdf(doi: str, title: str = "", known_urls: Optional[list] = None,
     it already has, so we don't re-query an API for something we know. A DOI is
     no longer strictly required — if we have a direct PDF URL we use it.
     ``allow_scihub`` is resolved at call time (see ``_scihub_allowed``): Sci-Hub
-    is the always-on fallback, so an unspecified caller still gets it unless an
-    operator opts out via ``DR_NEWPAPER_ALLOW_SCIHUB=0``.
+    is opt-in, so an unspecified caller gets the open-access methods only unless
+    an operator opted in via ``DR_NEWPAPER_ALLOW_SCIHUB=1``.
 
     Returns dict with: success, path, method, error
     """
@@ -320,7 +320,7 @@ def download_pdf(doi: str, title: str = "", known_urls: Optional[list] = None,
             continue
 
     tried = ", ".join(m for m, _ in methods)
-    scihub_hint = "" if _scihub_allowed(allow_scihub) else " (Sci-Hub désactivé via DR_NEWPAPER_ALLOW_SCIHUB)"
+    scihub_hint = "" if _scihub_allowed(allow_scihub) else " (repli Sci-Hub non activé : DR_NEWPAPER_ALLOW_SCIHUB=1 pour l'autoriser)"
     return {
         "success": False,
         "path": "",

@@ -6,7 +6,9 @@ from pathlib import Path
 from typing import List, Dict
 from datetime import datetime
 
-RECHERCHE_BASE = Path("/tmp/hermy_repo/Projects/recherche/Dossier")
+# Resolved from this file's own location so the repo stays movable. The former
+# absolute path pointed into /tmp, which the OS wipes on reboot.
+RECHERCHE_BASE = Path(__file__).resolve().parent / "Dossier"
 
 # User-visible library for compiled meta-analysis documents. Overridable via env
 # (tests point this at a tmp dir; never write into the user's real Dossier).

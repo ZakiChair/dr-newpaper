@@ -80,4 +80,4 @@ except Exception as e:
     print(f"  -> Erreur: {e}")
 
 print("\nMaintenant tu peux démarrer le bot avec:")
-print("cd /tmp/hermy_repo/Projects/recherche && source .env && python3 bot.py")
+print(f"cd {Path(__file__).resolve().parent} && source .env && python3 bot.py")

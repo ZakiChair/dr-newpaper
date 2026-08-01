@@ -1,15 +1,32 @@
 import os, json, urllib.request, re
+from pathlib import Path
 from config import DEFAULT_MODEL
 
-for line in open('/tmp/hermy_repo/Projects/recherche/.env').read().splitlines():
-    line = line.strip()
-    if '=' in line and not line.startswith('#'):
-        k, v = line.split('=', 1)
-        os.environ[k] = v
+# The .env next to this script; absent is fine when the caller exported the
+# variables itself. Opening it unconditionally used to raise a FileNotFoundError
+# that at least named the missing file, so _required keeps that diagnostic:
+# without it a bare KeyError says nothing about where the value should come from.
+_env = Path(__file__).resolve().parent / '.env'
+if _env.exists():
+    for line in _env.read_text().splitlines():
+        line = line.strip()
+        if '=' in line and not line.startswith('#'):
+            k, v = line.split('=', 1)
+            os.environ[k] = v
 
-TOKEN = os.environ['TELEGRAM_BOT_TOKEN']
-CHAT_ID = os.environ['TELEGRAM_CHAT_ID']
-MM_KEY = os.environ['MINIMAX_API_KEY']
+
+def _required(name):
+    try:
+        return os.environ[name]
+    except KeyError:
+        raise SystemExit(
+            f"{name} manquant : renseignez-le dans {_env} ou exportez-le avant "
+            f"de lancer ce script.")
+
+
+TOKEN = _required('TELEGRAM_BOT_TOKEN')
+CHAT_ID = _required('TELEGRAM_CHAT_ID')
+MM_KEY = _required('MINIMAX_API_KEY')
 
 def send(text):
     payload = json.dumps({'chat_id': str(CHAT_ID), 'text': text, 'disable_web_page_preview': True}).encode()

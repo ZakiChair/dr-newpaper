@@ -38,7 +38,10 @@ if env_file.exists():
             os.environ[k.strip()] = v.strip()
 
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
-CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "6173476745")
+# The operator chat allowed to drive this bot. No default: this file is public,
+# and a baked-in id would both leak a personal identifier and hand the bot to
+# whoever cloned it. main() refuses to start when it is unset.
+CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
 
 logging.basicConfig(
     level=logging.INFO,
@@ -532,6 +535,13 @@ async def cmd_pdf(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
 async def button_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
+    # CallbackQueryHandler takes no chat filter, so the allow-list is enforced
+    # here — otherwise the inline buttons would be an unguarded way in.
+    chat = update.effective_chat
+    if not config.is_authorized(chat.id if chat else None):
+        _log.warning("Callback refusé pour le chat %s", chat.id if chat else "?")
+        await query.answer(text="Accès refusé.", show_alert=True)
+        return
     await query.answer()
     data = query.data or ""
 
@@ -594,20 +604,49 @@ def main():
         _log.error("TELEGRAM_BOT_TOKEN not set in .env")
         sys.exit(1)
 
+    if not CHAT_ID:
+        _log.error(
+            "TELEGRAM_CHAT_ID not set in .env — refusing to start. Telegram bots "
+            "are discoverable by name, so without an operator chat this bot would "
+            "answer anyone: every /deep spends your MiniMax quota and every /pdf "
+            "downloads from your IP."
+        )
+        sys.exit(1)
+    try:
+        operator_chat = int(CHAT_ID)
+    except ValueError:
+        _log.error("TELEGRAM_CHAT_ID must be a numeric chat id, got %r", CHAT_ID)
+        sys.exit(1)
+    if operator_chat == 0:
+        # Placeholder rather than a chat: no Telegram chat has id 0, so the bot
+        # would poll happily and answer nobody — the failure this guard exists
+        # to prevent, wearing a running bot's face.
+        _log.error("TELEGRAM_CHAT_ID=0 is a placeholder, not a chat id.")
+        sys.exit(1)
+
     _log.info(f"Starting Dr_NewPaper_bot (token: ...{BOT_TOKEN[-10:]})")
 
     app = Application.builder().token(BOT_TOKEN).build()
 
-    app.add_handler(CommandHandler("start", cmd_start))
-    app.add_handler(CommandHandler("help", cmd_help))
-    app.add_handler(CommandHandler("search", cmd_search))
-    app.add_handler(CommandHandler("deep", cmd_deep))
-    app.add_handler(CommandHandler("meta", cmd_meta))
-    app.add_handler(CommandHandler("sources", cmd_sources))
-    app.add_handler(CommandHandler("status", cmd_status))
-    app.add_handler(CommandHandler("pdf", cmd_pdf))
+    # Every entry point is gated on the operator chat. CallbackQueryHandler
+    # accepts no filter, so button_callback checks config.is_authorized itself.
+    #
+    # UpdateType.MESSAGES is re-stated because passing ``filters=`` to
+    # CommandHandler *replaces* its default rather than narrowing it: without
+    # this, gating on the chat would also start accepting channel posts, whose
+    # update.message is None — every handler below dereferences it.
+    only_operator = filters.Chat(chat_id=operator_chat) & filters.UpdateType.MESSAGES
+    app.add_handler(CommandHandler("start", cmd_start, filters=only_operator))
+    app.add_handler(CommandHandler("help", cmd_help, filters=only_operator))
+    app.add_handler(CommandHandler("search", cmd_search, filters=only_operator))
+    app.add_handler(CommandHandler("deep", cmd_deep, filters=only_operator))
+    app.add_handler(CommandHandler("meta", cmd_meta, filters=only_operator))
+    app.add_handler(CommandHandler("sources", cmd_sources, filters=only_operator))
+    app.add_handler(CommandHandler("status", cmd_status, filters=only_operator))
+    app.add_handler(CommandHandler("pdf", cmd_pdf, filters=only_operator))
     app.add_handler(CallbackQueryHandler(button_callback))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, message_handler))
+    app.add_handler(MessageHandler(
+        filters.TEXT & ~filters.COMMAND & only_operator, message_handler))
 
     _log.info("Dr_NewPaper initialized. Bot is running.")
     app.run_polling(drop_pending_updates=True)

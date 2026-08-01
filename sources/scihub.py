@@ -103,8 +103,8 @@ def try_download_pdf(doi: str, output_dir: str = "/tmp/scihub_pdfs",
     2. Fall back to Sci-Hub
 
     ``allow_scihub`` is resolved at *call* time via :func:`config.scihub_enabled`:
-    Sci-Hub is the always-on fallback, so an unspecified (``None``) caller gets it
-    enabled unless an operator opts out with ``DR_NEWPAPER_ALLOW_SCIHUB=0``.
+    Sci-Hub is opt-in, so an unspecified (``None``) caller stops after step 1
+    unless an operator opted in with ``DR_NEWPAPER_ALLOW_SCIHUB=1``.
 
     Returns dict with: success, path, url, method, error
     """
@@ -138,7 +138,7 @@ def try_download_pdf(doi: str, output_dir: str = "/tmp/scihub_pdfs",
             "path": "",
             "url": "",
             "method": "",
-            "error": "No open-access PDF found; Sci-Hub fallback disabled via DR_NEWPAPER_ALLOW_SCIHUB",
+            "error": "No open-access PDF found; Sci-Hub fallback not enabled (set DR_NEWPAPER_ALLOW_SCIHUB=1 to allow it)",
         }
 
     return {

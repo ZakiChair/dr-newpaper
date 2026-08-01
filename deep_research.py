@@ -82,10 +82,11 @@ def deep_research(query: str, max_articles: int = 3, lang: str = "fr",
     """Run deep research pipeline.
 
     Returns list of article dicts with enriched 'deep_summary' field.
-    ``allow_scihub`` is the Sci-Hub fallback for paywalled studies. It is the
-    always-on default (``None`` → resolved on at the download layer); pass
-    ``False`` only to force it off. It is independent of the search depth — the
-    depth knob governs only the per-article AI synthesis.
+    ``allow_scihub`` is the Sci-Hub fallback for paywalled studies. It is opt-in:
+    ``None`` resolves at the download layer to whatever the operator set with
+    ``DR_NEWPAPER_ALLOW_SCIHUB``, which is off unless they turned it on. It is
+    independent of the search depth — the depth knob governs only the
+    per-article AI synthesis.
     ``progress_cb(stage, detail, current, total)`` — when supplied — is called as
     the pipeline advances so the UI can paint a live staged progress panel. It
     must be cheap and thread-safe (the TUI passes a ProgressChannel.report).

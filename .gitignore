@@ -1,6 +1,12 @@
 # Generated research outputs — don't commit these
 Dossier/
+# WAL mode (storage.py) creates -wal/-shm siblings holding real database pages;
+# the repo is public, so they must never be committed either.
 research_terminal.db
+research_terminal.db-wal
+research_terminal.db-shm
+
+__pycache__/
 
 # Local secrets (API keys)
 .env

@@ -770,9 +770,9 @@ def resolve_search_config(state: "TuiState") -> dict[str, Any]:
         "max": eff_max,
         "sources": list(sources),
         "deep": deep,
-        # Sci-Hub is the always-on PDF fallback, independent of depth: the depth
-        # knob only governs the per-article AI analysis (MiniMax summaries +
-        # appraisal). Honours an operator opt-out (DR_NEWPAPER_ALLOW_SCIHUB=0).
+        # Sci-Hub is an opt-in PDF fallback, independent of depth: the depth knob
+        # only governs the per-article AI analysis (MiniMax summaries +
+        # appraisal). Off unless an operator set DR_NEWPAPER_ALLOW_SCIHUB=1.
         "allow_scihub": scihub_enabled(),
         "sensitivity": SENSITIVITY_LEVELS[clamp_index(state.sensitivity_idx, len(SENSITIVITY_LEVELS))][0],
         "depth": depth_label,

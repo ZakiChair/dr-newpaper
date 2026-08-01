@@ -13,23 +13,54 @@ DEFAULT_LANG = os.getenv("DR_NEWPAPER_LANG", "fr")
 def scihub_enabled(explicit: bool | None = None) -> bool:
     """Resolve whether Sci-Hub is an allowed PDF-download fallback, at call time.
 
-    Sci-Hub is the *always-on* download fallback: it is independent of the
-    search depth (the deepsearch knob only governs the per-article MiniMax AI
-    analysis — summaries and their critical appraisal). An explicit caller value
-    always wins; otherwise Sci-Hub is ON unless an operator opts out by setting
-    ``DR_NEWPAPER_ALLOW_SCIHUB`` to ``0``/``false``/``no``/``off``.
+    Sci-Hub is *opt-in*: an operator who configured nothing never reaches it.
+    Downloading paywalled articles through it infringes copyright in most
+    jurisdictions, so the deliberate act of setting the variable is what carries
+    the operator's consent — a default-on fallback would make that choice for
+    them. An explicit caller value still wins; otherwise Sci-Hub is OFF unless
+    ``DR_NEWPAPER_ALLOW_SCIHUB`` is set to ``1``/``true``/``yes``/``on``.
+
+    The check is an *allow*-list, not a deny-list: an unrecognised or empty
+    value (a typo, a blank line in .env) leaves Sci-Hub off rather than
+    silently enabling it. .strip() so a whitespace-padded opt-in from a docker
+    --env-file / EnvironmentFile is still read, matching load_env_file.
     """
     if explicit is not None:
         return bool(explicit)
-    # .strip() so a whitespace-padded operator opt-out (e.g. a stray trailing
-    # space in a docker --env-file / EnvironmentFile) still disables Sci-Hub —
-    # the kill-switch must fail *safe*, matching load_env_file's own stripping.
-    return os.getenv("DR_NEWPAPER_ALLOW_SCIHUB", "1").strip().lower() not in {"0", "false", "no", "off"}
+    return os.getenv("DR_NEWPAPER_ALLOW_SCIHUB", "0").strip().lower() in {"1", "true", "yes", "on"}
 
 
-# Back-compat module constant — now an *import-time snapshot* of the default-on
-# resolution. Prefer ``scihub_enabled()`` so a runtime opt-out is honoured.
+# Back-compat module constant — an *import-time snapshot* of the opt-in
+# resolution. Prefer ``scihub_enabled()`` so a runtime opt-in is honoured.
 ALLOW_SCIHUB = scihub_enabled()
+
+
+def is_authorized(chat_id: object) -> bool:
+    """Whether ``chat_id`` may drive the Telegram bot.
+
+    Only the operator chat named by ``TELEGRAM_CHAT_ID`` is allowed. With the
+    variable unset the answer is always False — the bot has no owner to serve,
+    so it must serve nobody. Telegram bots are discoverable by name, and every
+    command spends the operator's own MiniMax quota and network identity.
+
+    A single id (not a list) on purpose: ``telegram_sender`` and ``pdf_sender``
+    read the same variable as the *destination* chat, so a comma-separated
+    value would silently break message delivery.
+
+    Compared as numbers, not as text, to match ``bot.main()``: it parses the
+    same variable with ``int()`` before handing it to ``filters.Chat``. Under a
+    text comparison the two halves of this one allow-list disagree on spellings
+    ``int()`` accepts — ``+123``, ``0123``, ``1_23`` — and the bot answers
+    commands while refusing its own buttons, which reads as a Telegram glitch
+    rather than a configuration mistake.
+    """
+    operator = os.getenv("TELEGRAM_CHAT_ID", "").strip()
+    if not operator:
+        return False
+    try:
+        return int(chat_id) == int(operator)
+    except (TypeError, ValueError):
+        return False
 
 # ── Canonical search defaults ───────────────────────────────────────────────
 # One source of truth for "what a default search is", imported by every front

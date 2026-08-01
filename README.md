@@ -5,7 +5,8 @@ Dr_NewPaper est un outil de veille et de synthèse de littérature scientifique.
 ## Installation
 
 ```bash
-cd /tmp/hermy_repo/Projects/recherche
+git clone https://github.com/ZakiChair/dr-newpaper.git
+cd dr-newpaper
 pip install -r requirements.txt
 ```
 
@@ -16,17 +17,48 @@ Créer/compléter `.env` :
 ```bash
 MINIMAX_API_KEY=...
 TELEGRAM_BOT_TOKEN=...
+# Obligatoire : seul ce chat peut piloter le bot. Sans lui, bot.py refuse de démarrer.
 TELEGRAM_CHAT_ID=...
 # Optionnel : modèle MiniMax centralisé
 DR_NEWPAPER_MODEL=MiniMax-M3
-# Optionnel : kill-switch opérateur du fallback Sci-Hub (activé par défaut)
-# DR_NEWPAPER_ALLOW_SCIHUB=0
 ```
 
-Par défaut, les PDFs essaient d'abord les sources open-access, puis Sci-Hub en
-fallback — toujours actif, indépendamment de la config de recherche (la
-profondeur « deepsearch » ne pilote que l'analyse IA MiniMax des études). Un
-opérateur peut désactiver globalement Sci-Hub avec `DR_NEWPAPER_ALLOW_SCIHUB=0`.
+### Contrôle d'accès du bot
+
+`TELEGRAM_CHAT_ID` n'est pas seulement la destination des messages : c'est la
+**liste d'autorisation**. Les bots Telegram se trouvent par leur nom, et chaque
+commande dépense votre quota MiniMax et sort par votre adresse IP — un bot
+ouvert est un bot que des inconnus font travailler à vos frais. Les commandes
+venues d'un autre chat sont ignorées, et les boutons en ligne répondent
+« Accès refusé ».
+
+L'autorisation porte sur le **chat**, pas sur la personne. En conversation
+privée les deux se confondent, mais si vous mettez là l'identifiant d'un groupe
+— tentant, puisque la même variable désigne aussi la destination des digests —
+alors **tout membre du groupe pilote le bot**, y compris quelqu'un ajouté plus
+tard par un tiers. Pour un usage personnel, indiquez votre chat privé.
+
+### Récupération des PDF
+
+Les PDF sont cherchés dans les sources open-access (Unpaywall, Europe PMC,
+CORE, bioRxiv, arXiv). Ce chemin est le seul actif par défaut.
+
+Le code contient aussi un repli Sci-Hub, **désactivé par défaut et laissé à la
+responsabilité de l'opérateur** : y télécharger un article sous paywall
+enfreint le droit d'auteur dans la plupart des juridictions. Il ne s'active que
+par un geste explicite :
+
+```bash
+DR_NEWPAPER_ALLOW_SCIHUB=1
+```
+
+Toute autre valeur — y compris une faute de frappe ou une variable vide — le
+laisse désactivé.
+
+Le réglage ne gouverne que les *téléchargements*. Les PDF déjà récupérés
+restent dans le cache `/tmp/drnewpaper_pdfs` et sont resservis sans passer par
+cette garde : si vous désactivez Sci-Hub après vous en être servi, videz le
+cache pour ne plus en voir les fichiers.
 
 ## Bot Telegram
 
@@ -84,7 +116,7 @@ python3 research_terminal.py compare 1 2 3
 
 Modules principaux :
 
-- `config.py` — configuration centralisée, modèle `MiniMax-M3`, chemin DB, résolveur Sci-Hub (`scihub_enabled()`, actif par défaut).
+- `config.py` — configuration centralisée, modèle `MiniMax-M3`, chemin DB, liste d'autorisation du bot (`is_authorized()`), résolveur Sci-Hub (`scihub_enabled()`, désactivé par défaut).
 - `normalization.py` — normalisation DOI/titre, clés canoniques, fusion métadonnées.
 - `storage.py` — SQLite : articles, summaries, scores, watchlists, hits, pdfs, notes.
 - `scoring.py` — score nouveauté / niveau de preuve / pertinence clinique / risque.
@@ -154,8 +186,17 @@ python3 -m unittest discover -v
 python3 -m py_compile *.py sources/*.py
 ```
 
+Sans les dépendances de `requirements.txt`, la suite passe au vert en
+**ignorant** les tests qui pilotent le bot (ceux de `test_bot_authorization.py`
+qui importent `python-telegram-bot`). Un contrôle d'accès non exécuté est un
+contrôle d'accès non vérifié : installez les dépendances avant de conclure que
+la suite valide le bot. Le reste du fichier repose sur `ast` et s'exécute
+partout.
+
 Tests ajoutés :
 
+- `test_security_defaults.py` — Sci-Hub opt-in, aucun identifiant personnel en dur, chemins internes au dépôt
+- `test_bot_authorization.py` — contrôle d'accès tel qu'il est câblé dans `bot.py`
 - `test_research_desk_core.py`
 - `test_research_terminal_commands.py`
 - conservation des tests existants `test_research_terminal.py`, `test_minimax_config.py`
