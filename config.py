@@ -41,6 +41,33 @@ def scihub_enabled(explicit: bool | None = None) -> bool:
 ALLOW_SCIHUB = scihub_enabled()
 
 
+def parse_env_line(line: str) -> "tuple[str, str] | None":
+    """Parse one ``.env`` line into ``(name, value)``, or None if it carries none.
+
+    The definition of the format, shared with ``lib.sh``'s ``load_env`` so the
+    cron scripts and the Python entry points read one file the same way. They
+    used to differ: ``export $(cat .env | xargs)`` stripped the quotes around a
+    value and split it on spaces, while the Python side did neither, so a
+    ``TELEGRAM_CHAT_ID="123"`` delivered digests from cron and stopped the bot.
+
+    Blank lines and ``#`` comments yield None. The split is on the first ``=``
+    only, so a value may contain more. Whitespace around both halves is dropped,
+    then one matching pair of surrounding quotes, which is what writing a value
+    with spaces in a ``.env`` normally looks like. A ``#`` inside a value is part
+    of the value: only a whole-line comment is a comment.
+    """
+    line = line.strip()
+    if not line or line.startswith("#") or "=" not in line:
+        return None
+    name, value = line.split("=", 1)
+    name, value = name.strip(), value.strip()
+    if not name:
+        return None
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in ("'", '"'):
+        value = value[1:-1]
+    return name, value
+
+
 def allowed_user_ids() -> set[int]:
     """The people allowed to drive the bot from a shared chat.
 
@@ -124,16 +151,22 @@ DEFAULT_DEEP_SOURCES = ["pubmed", "crossref", "openalex", "europe_pmc", "biorxiv
 DEFAULT_MAX_RESULTS = 5
 
 
-def load_env_file(path: Path | None = None) -> None:
-    """Load a simple .env file without overriding existing environment values."""
-    env_path = path or PROJECT_DIR / ".env"
+def load_env_file(path: "str | Path | None" = None) -> None:
+    """Load a ``.env`` file without overriding existing environment values.
+
+    The single entry point for reading ``.env`` — bot.py, pdf_sender.py and
+    send_digest.py each carried their own copy of this loop, which is how they
+    came to disagree with the cron scripts about what a line means. Line syntax
+    lives in :func:`parse_env_line`, mirrored by ``lib.sh``.
+
+    An already-exported value wins, matching python-dotenv and ``lib.sh``: an
+    operator running ``TELEGRAM_CHAT_ID=999 ./daily_digest.sh`` to try something
+    out means it, and a file should not overrule what they just typed.
+    """
+    env_path = Path(path) if path else PROJECT_DIR / ".env"
     if not env_path.exists():
         return
     for line in env_path.read_text().splitlines():
-        line = line.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        key, value = line.split("=", 1)
-        key = key.strip()
-        if key and key not in os.environ:
-            os.environ[key] = value.strip().strip('"').strip("'")
+        parsed = parse_env_line(line)
+        if parsed and parsed[0] not in os.environ:
+            os.environ[parsed[0]] = parsed[1]

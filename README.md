@@ -26,6 +26,13 @@ TELEGRAM_CHAT_ID=...
 DR_NEWPAPER_MODEL=MiniMax-M3
 ```
 
+Le fichier est lu par les entrées Python (`config.parse_env_line`) et par les
+scripts cron (`lib.sh`), qui appliquent les **mêmes règles** : découpe au
+premier `=`, espaces retirés de part et d'autre, puis une paire de guillemets
+englobants si elle est présente. Une valeur peut donc contenir des espaces, un
+`=` ou un `#`. Une variable **déjà exportée l'emporte** sur le fichier, ce qui
+permet d'essayer une valeur le temps d'une commande.
+
 ### Contrôle d'accès du bot
 
 `TELEGRAM_CHAT_ID` n'est pas seulement la destination des messages : c'est la

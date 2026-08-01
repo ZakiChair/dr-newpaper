@@ -10,6 +10,7 @@ A fake repository is assembled in a temp directory (the real scripts, a stub
 `run.py`, a `.env`) so nothing here touches the operator's own checkout or the
 network.
 """
+import json
 import os
 import shutil
 import subprocess
@@ -62,7 +63,7 @@ class _FakeRepo:
 class EnvLoadingTests(unittest.TestCase):
     """`export $(cat .env | xargs)` split every value on whitespace."""
 
-    def _load(self, env_text):
+    def _load(self, env_text, preset=None):
         """Source lib.sh in a fake repo and dump the environment it produced."""
         repo = _FakeRepo(env_text=env_text, scripts=("lib.sh",))
         self.addCleanup(repo.cleanup)
@@ -70,10 +71,26 @@ class EnvLoadingTests(unittest.TestCase):
             f'cd "{repo.dir}" && . ./lib.sh && load_env && '
             'python3 -c "import os,json;print(json.dumps(dict(os.environ)))"'
         )
-        out = subprocess.run([BASH, "-c", script], capture_output=True, text=True, timeout=60)
+        # A clean environment: the loader leaves already-exported values alone,
+        # so an inherited one would silently decide the assertion.
+        env = {k: v for k, v in os.environ.items() if not k.startswith("DR_NEWPAPER_")
+               and not k.startswith("TELEGRAM_") and not k.startswith("MINIMAX_")}
+        env.update(preset or {})
+        out = subprocess.run([BASH, "-c", script], capture_output=True, text=True,
+                             timeout=60, env=env)
         self.assertEqual(out.returncode, 0, out.stderr)
-        import json
         return json.loads(out.stdout.strip().splitlines()[-1])
+
+    def test_an_already_exported_value_is_left_alone(self):
+        env = self._load("TELEGRAM_CHAT_ID=4242\n", preset={"TELEGRAM_CHAT_ID": "999"})
+        self.assertEqual(env.get("TELEGRAM_CHAT_ID"), "999")
+
+    def test_a_value_named_like_one_of_the_loader_locals_still_loads(self):
+        # The existence check must look at the environment, not at the shell:
+        # load_env has locals named file/line/key/value.
+        env = self._load("line=une-valeur\nvalue=une-autre\n")
+        self.assertEqual(env.get("line"), "une-valeur")
+        self.assertEqual(env.get("value"), "une-autre")
 
     def test_a_value_containing_spaces_survives_whole(self):
         env = self._load("DR_NEWPAPER_MODEL=MiniMax M3 Pro\n")
@@ -161,6 +178,76 @@ class MissingEnvTests(unittest.TestCase):
         self.addCleanup(repo.cleanup)
         result = repo.run()
         self.assertIn(str(repo.dir), result.stderr)
+
+
+@needs_bash
+class CrossReaderAgreementTests(unittest.TestCase):
+    """The shell and the Python loaders must read one file the same way.
+
+    They are two implementations of one format, and the file they read holds the
+    credentials, so a disagreement is not cosmetic: before, `xargs` stripped the
+    quotes around a value while the Python side kept them, which is why a
+    quoted TELEGRAM_CHAT_ID delivered digests from cron and stopped the bot dead.
+    """
+
+    FIXTURE = "\n".join([
+        "# un commentaire",
+        "",
+        "TELEGRAM_BOT_TOKEN=123456:ABC-DEF",
+        'TELEGRAM_CHAT_ID="4242"',
+        "DR_NEWPAPER_MODEL='MiniMax M3 Pro'",
+        "  DR_NEWPAPER_LANG = fr ",
+        "MINIMAX_API_KEY=abc==",
+        "AVEC_DIESE=valeur#pas-un-commentaire",
+    ]) + "\n"
+
+    KEYS = ("TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID", "DR_NEWPAPER_MODEL",
+            "DR_NEWPAPER_LANG", "MINIMAX_API_KEY", "AVEC_DIESE")
+
+    def setUp(self):
+        self.repo = _FakeRepo(env_text=self.FIXTURE, scripts=("lib.sh",))
+        self.addCleanup(self.repo.cleanup)
+
+    def _clean_env(self):
+        return {k: v for k, v in os.environ.items() if k not in self.KEYS}
+
+    def _read_with_shell(self):
+        keys = " ".join(self.KEYS)
+        script = (
+            f'cd "{self.repo.dir}" && . ./lib.sh && load_env && '
+            f'python3 -c "import os,json,sys;print(json.dumps({{k:os.environ.get(k) '
+            f'for k in \'{keys}\'.split()}}))"'
+        )
+        out = subprocess.run([BASH, "-c", script], capture_output=True, text=True,
+                             timeout=60, env=self._clean_env())
+        self.assertEqual(out.returncode, 0, out.stderr)
+        return json.loads(out.stdout.strip().splitlines()[-1])
+
+    def _read_with_python(self):
+        script = (
+            "import json, os, sys; sys.path.insert(0, %r); import config; "
+            "config.load_env_file(%r); "
+            "print(json.dumps({k: os.environ.get(k) for k in %r}))"
+            % (str(REPO), str(self.repo.dir / ".env"), list(self.KEYS))
+        )
+        out = subprocess.run(["python3", "-c", script], capture_output=True, text=True,
+                             timeout=60, env=self._clean_env())
+        self.assertEqual(out.returncode, 0, out.stderr)
+        return json.loads(out.stdout.strip().splitlines()[-1])
+
+    def test_both_readers_produce_the_same_environment(self):
+        self.assertEqual(self._read_with_shell(), self._read_with_python())
+
+    def test_the_agreed_reading_is_the_expected_one(self):
+        # Agreement alone would be satisfied by two identically wrong readers.
+        self.assertEqual(self._read_with_python(), {
+            "TELEGRAM_BOT_TOKEN": "123456:ABC-DEF",
+            "TELEGRAM_CHAT_ID": "4242",              # quotes removed
+            "DR_NEWPAPER_MODEL": "MiniMax M3 Pro",   # kept whole, quotes removed
+            "DR_NEWPAPER_LANG": "fr",                # trimmed
+            "MINIMAX_API_KEY": "abc==",              # split on the first = only
+            "AVEC_DIESE": "valeur#pas-un-commentaire",
+        })
 
 
 class BothScriptsAgreeTests(unittest.TestCase):

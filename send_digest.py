@@ -1,5 +1,7 @@
 import os, json, urllib.request, re
 from pathlib import Path
+
+import config
 from config import DEFAULT_MODEL
 
 # The .env next to this script; absent is fine when the caller exported the
@@ -7,12 +9,7 @@ from config import DEFAULT_MODEL
 # that at least named the missing file, so _required keeps that diagnostic:
 # without it a bare KeyError says nothing about where the value should come from.
 _env = Path(__file__).resolve().parent / '.env'
-if _env.exists():
-    for line in _env.read_text().splitlines():
-        line = line.strip()
-        if '=' in line and not line.startswith('#'):
-            k, v = line.split('=', 1)
-            os.environ[k] = v
+config.load_env_file(_env)
 
 
 def _required(name):

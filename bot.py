@@ -29,13 +29,7 @@ import pdf_sender
 
 # ── Env loading ───────────────────────────────────────────────────────────
 
-env_file = Path(__file__).parent / ".env"
-if env_file.exists():
-    for line in env_file.read_text().splitlines():
-        line = line.strip()
-        if line and not line.startswith("#") and "=" in line:
-            k, v = line.split("=", 1)
-            os.environ[k.strip()] = v.strip()
+config.load_env_file()
 
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 # The operator chat allowed to drive this bot. No default: this file is public,
