@@ -8,6 +8,7 @@ These lock down four properties the project must not silently regress:
 4. No file points at the pre-extraction monorepo path under /tmp.
 """
 import os
+import re
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -139,6 +140,22 @@ class SharedChatAuthorizationTests(unittest.TestCase):
 
 
 class NoLeakedIdentifierTests(unittest.TestCase):
+    def test_no_source_prints_a_slice_of_a_credential(self):
+        # `BOT_TOKEN[:20]` and `BOT_TOKEN[-10:]` both went to stdout, and the
+        # output of a restart script is exactly what gets pasted into an issue.
+        # Matched on the *name* rather than the two known sites, so a third one
+        # cannot appear quietly. The bot id — the part before the colon — is
+        # public and stays printable; anything after it is the whole secret.
+        pattern = re.compile(r"(?:TOKEN|API_KEY|SECRET|PASSWORD)\s*\[")
+        offenders = sorted(
+            f"{p.relative_to(REPO)}:{n}"
+            for p in _scanned_files()
+            for n, line in enumerate(p.read_text(encoding="utf-8", errors="ignore")
+                                     .splitlines(), 1)
+            if pattern.search(line)
+        )
+        self.assertEqual(offenders, [], f"credential sliced in {offenders}")
+
     def test_no_personal_chat_id_is_hardcoded_anywhere(self):
         # The repo is public; a personal Telegram id must not ship as a fallback.
         leaked = [str(p.relative_to(REPO)) for p in _scanned_files()

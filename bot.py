@@ -621,18 +621,25 @@ def main():
         _log.error("TELEGRAM_CHAT_ID=0 is a placeholder, not a chat id.")
         sys.exit(1)
 
-    _log.info(f"Starting Dr_NewPaper_bot (token: ...{BOT_TOKEN[-10:]})")
+    # The numeric id before the colon, never a slice of the token. That id is
+    # already public — it is the bot's own from_user.id on every message it
+    # sends — whereas the part after the colon is the whole of the secret, and
+    # logs get pasted into issues.
+    _log.info("Starting Dr_NewPaper_bot (id: %s)", BOT_TOKEN.split(":")[0])
 
     app = Application.builder().token(BOT_TOKEN).build()
 
     # Every entry point is gated on the operator chat. CallbackQueryHandler
     # accepts no filter, so button_callback checks config.is_authorized itself.
     #
-    # UpdateType.MESSAGES is re-stated because passing ``filters=`` to
-    # CommandHandler *replaces* its default rather than narrowing it: without
-    # this, gating on the chat would also start accepting channel posts, whose
-    # update.message is None — every handler below dereferences it.
-    only_operator = filters.Chat(chat_id=operator_chat) & filters.UpdateType.MESSAGES
+    # The update type is restated because passing ``filters=`` to CommandHandler
+    # *replaces* its default rather than narrowing it. MESSAGE and not MESSAGES:
+    # the plural also carries edited messages, whose update.message is None,
+    # and every handler below dereferences it — editing a command raised
+    # AttributeError and answered nothing. An edit is now ignored, which is what
+    # Telegram bots conventionally do and what keeps a re-edited /deep from
+    # spending the MiniMax quota twice.
+    only_operator = filters.Chat(chat_id=operator_chat) & filters.UpdateType.MESSAGE
 
     # A negative id is a group, supergroup or channel — a chat other people can
     # be added to, including by someone other than the operator. Matching the

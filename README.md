@@ -94,6 +94,11 @@ Le bot reste dans `bot.py` et conserve les commandes :
 /sources
 ```
 
+**Modifier un message déjà envoyé ne relance rien** : renvoyez la commande.
+Telegram traite une correction comme un événement à part, et la rejouer ferait
+repartir une recherche `/deep` — donc dépenser le quota MiniMax — pour une
+faute de frappe.
+
 ## Terminal Research Desk
 
 Le terminal est dans `research_terminal.py`. Les anciennes commandes restent compatibles :

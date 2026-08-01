@@ -14,7 +14,10 @@ if not BOT_TOKEN:
     raise SystemExit("TELEGRAM_BOT_TOKEN manquant dans .env")
 BASE_URL = f'https://api.telegram.org/bot{BOT_TOKEN}'
 
-print(f"[1/4] Bot token: {BOT_TOKEN[:20]}...")
+# The bot id, not a slice of the token: this script's output is exactly what an
+# operator pastes into an issue when a restart misbehaves, and [:20] carried the
+# id plus the first characters of the secret.
+print(f"[1/4] Bot id: {BOT_TOKEN.split(':')[0]}")
 
 # Step 1: delete webhook (assure clean state)
 print("[2/4] Suppression webhook...")

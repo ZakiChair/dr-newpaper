@@ -211,23 +211,42 @@ class HandlerWiringTests(unittest.TestCase):
         filters_ = self._handlers_of(MessageHandler)[0].filters
         self.assertFalse(filters_.check_update(_message_update(OPERATOR_CHAT, "/search x")))
 
-    def test_no_handler_accepts_a_channel_post(self):
-        # Passing filters= to CommandHandler replaces its default
-        # UpdateType.MESSAGES instead of narrowing it, so gating on the chat can
-        # widen the surface: a channel post has update.message = None and every
-        # handler dereferences it. Uses the operator's own id, since a channel
-        # the operator points at is precisely the reachable case.
-        chat = Chat(id=OPERATOR_CHAT, type=Chat.CHANNEL)
+    def test_no_handler_accepts_an_update_without_a_message(self):
+        # Every handler dereferences update.message, so none may accept an
+        # update where it is None — an edited message (AttributeError, and the
+        # operator saw no answer at all), a channel post, or an edited one.
+        # Both are reachable through the operator's own chat id, which is why
+        # the chat filter alone does not settle it.
         entities = (MessageEntity(type=MessageEntity.BOT_COMMAND, offset=0, length=7),)
-        post = Message(message_id=1, date=datetime.now(timezone.utc), chat=chat,
-                       text="/status x", entities=entities)
-        update = Update(update_id=1, channel_post=post)
-        self.assertIsNone(update.message, "fixture is not a channel post")
-        for handler in self.app.handlers:
-            if not hasattr(handler, "filters") or handler.filters is None:
-                continue
-            with self.subTest(handler=type(handler).__name__):
-                self.assertFalse(handler.filters.check_update(update))
+
+        def message_in(chat_type):
+            return Message(message_id=1, date=datetime.now(timezone.utc),
+                           chat=Chat(id=OPERATOR_CHAT, type=chat_type),
+                           text="/status x", entities=entities)
+
+        updates = {
+            "edited_message": Update(update_id=1,
+                                     edited_message=message_in(Chat.PRIVATE)),
+            "channel_post": Update(update_id=2,
+                                   channel_post=message_in(Chat.CHANNEL)),
+            "edited_channel_post": Update(update_id=3,
+                                          edited_channel_post=message_in(Chat.CHANNEL)),
+        }
+        for kind, update in updates.items():
+            self.assertIsNone(update.message, f"fixture for {kind} is wrong")
+            for handler in self.app.handlers:
+                if getattr(handler, "filters", None) is None:
+                    continue
+                with self.subTest(kind=kind, handler=type(handler).__name__):
+                    self.assertFalse(handler.filters.check_update(update))
+
+    def test_an_ordinary_message_is_still_accepted(self):
+        # The guard above must not be satisfied by rejecting everything.
+        update = _message_update(OPERATOR_CHAT, "/status x")
+        commands = [h for h in self.app.handlers if isinstance(h, CommandHandler)
+                    and "status" in h.commands]
+        self.assertEqual(len(commands), 1)
+        self.assertTrue(commands[0].filters.check_update(update))
 
     def test_the_callback_handler_exists_and_carries_the_in_code_guard(self):
         # CallbackQueryHandler accepts no filter, which is exactly why
@@ -491,8 +510,10 @@ class HandlerRegistrationSourceTests(unittest.TestCase):
             and any(getattr(t, "id", "") == "only_operator" for t in node.targets)
         )
         expression = ast.unparse(assignment.value)
-        self.assertIn("UpdateType.MESSAGES", expression,
-                      f"only_operator no longer restricts the update type: {expression}")
+        # \b so the plural does not satisfy this: MESSAGES carries edited
+        # messages, whose update.message is None under every handler.
+        self.assertRegex(expression, r"UpdateType\.MESSAGE\b",
+                         f"only_operator no longer restricts the update type: {expression}")
         self.assertIn("Chat", expression,
                       f"only_operator no longer restricts the chat: {expression}")
 
