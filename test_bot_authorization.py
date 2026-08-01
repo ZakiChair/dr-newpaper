@@ -144,6 +144,22 @@ class MainStartupGuardTests(unittest.TestCase):
         self.assertIn("TELEGRAM_CHAT_ID", message)
         self.assertRegex(message, r"(?i)refus|answer anyone")
 
+    def test_the_startup_log_never_carries_the_token(self):
+        # It used to log the last ten characters. A malformed token is the trap
+        # in the replacement: splitting on a colon that is not there hands back
+        # the whole string, which would print more than the slice it replaced.
+        for token, secret in (("1234567890:AAH-le-secret-entier", "AAH-le-secret-entier"),
+                              ("jeton-sans-deux-points", "jeton-sans-deux-points")):
+            with self.subTest(token=token):
+                with mock.patch.object(bot_module, "CHAT_ID", str(OPERATOR_CHAT)), \
+                     mock.patch.object(bot_module, "BOT_TOKEN", token), \
+                     mock.patch.object(bot_module, "Application") as application, \
+                     self.assertLogs(bot_module._log, level="INFO") as logged:
+                    application.builder.return_value.token.return_value.build.return_value = \
+                        _RecordingApp()
+                    bot_module.main()
+                self.assertNotIn(secret, "\n".join(logged.output))
+
     def test_whitespace_only_chat_id_aborts(self):
         with self.assertRaises(SystemExit):
             _run_main_capturing_handlers("   ")

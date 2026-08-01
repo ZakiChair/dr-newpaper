@@ -624,8 +624,11 @@ def main():
     # The numeric id before the colon, never a slice of the token. That id is
     # already public — it is the bot's own from_user.id on every message it
     # sends — whereas the part after the colon is the whole of the secret, and
-    # logs get pasted into issues.
-    _log.info("Starting Dr_NewPaper_bot (id: %s)", BOT_TOKEN.split(":")[0])
+    # logs get pasted into issues. The colon has to be there: split() on a
+    # malformed token returns the *whole* string, which would print more than
+    # the slice this replaced.
+    _log.info("Starting Dr_NewPaper_bot (id: %s)",
+              BOT_TOKEN.split(":")[0] if ":" in BOT_TOKEN else "inconnu")
 
     app = Application.builder().token(BOT_TOKEN).build()
 

@@ -16,8 +16,9 @@ BASE_URL = f'https://api.telegram.org/bot{BOT_TOKEN}'
 
 # The bot id, not a slice of the token: this script's output is exactly what an
 # operator pastes into an issue when a restart misbehaves, and [:20] carried the
-# id plus the first characters of the secret.
-print(f"[1/4] Bot id: {BOT_TOKEN.split(':')[0]}")
+# id plus the first characters of the secret. The colon has to be there —
+# split() on a malformed token would hand back the whole string.
+print(f"[1/4] Bot id: {BOT_TOKEN.split(':')[0] if ':' in BOT_TOKEN else 'inconnu'}")
 
 # Step 1: delete webhook (assure clean state)
 print("[2/4] Suppression webhook...")
