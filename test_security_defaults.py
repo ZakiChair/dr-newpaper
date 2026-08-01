@@ -165,12 +165,20 @@ class RepoLocalPathTests(unittest.TestCase):
         # under ~/Dossier while the articles they describe sat in the repo.
         import pdf_sender
         self.assertEqual(file_writer.RECHERCHE_BASE, config.DOSSIER_BASE)
-        # Both are env-overridable and read at import, so an operator who set
-        # one would otherwise see this test fail for doing something supported.
-        if not os.getenv("DR_NEWPAPER_PDF_DIR"):
-            self.assertEqual(Path(pdf_sender.PDF_LIBRARY_DIR).parent, config.DOSSIER_BASE)
-        if not os.getenv("DR_NEWPAPER_META_DIR"):
-            self.assertEqual(file_writer.META_LIBRARY_DIR.parent, config.DOSSIER_BASE)
+        # Both are env-overridable and resolved at import. Asserting the
+        # repo-anchored value outright would fail for an operator who moved
+        # their library to an external volume — a supported thing to do — so
+        # each is checked against whichever rule actually applies. Skipping
+        # instead would leave the invariant unverified precisely for them.
+        for constant, override in (
+            (Path(pdf_sender.PDF_LIBRARY_DIR), os.getenv("DR_NEWPAPER_PDF_DIR")),
+            (Path(file_writer.META_LIBRARY_DIR), os.getenv("DR_NEWPAPER_META_DIR")),
+        ):
+            with self.subTest(constant=str(constant)):
+                if override:
+                    self.assertEqual(constant, Path(override))
+                else:
+                    self.assertEqual(constant.parent, config.DOSSIER_BASE)
 
     def test_no_module_anchors_the_library_to_the_working_directory(self):
         # Bans the literal rather than comparing two constants: what must not
