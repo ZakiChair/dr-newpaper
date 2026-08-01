@@ -9,6 +9,10 @@ These lock down four properties the project must not silently regress:
 """
 import os
 import re
+import shutil
+import subprocess
+import sys
+import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -137,6 +141,53 @@ class SharedChatAuthorizationTests(unittest.TestCase):
         with mock.patch.dict(os.environ):
             os.environ.pop("TELEGRAM_ALLOWED_USERS", None)
             self.assertEqual(config.allowed_user_ids(), set())
+
+
+class TokenNeverReachesStdoutTests(unittest.TestCase):
+    """restart_clean's output is what an operator pastes into an issue.
+
+    Sanitising the one line that printed a slice of the token was not enough:
+    the token is part of every URL the script requests, and when a URL is
+    rejected `http.client.InvalidURL` quotes it back in full — straight into the
+    three `print(f"-> Erreur: {e}")` below. The script now refuses a token
+    carrying the characters that trigger that, before it builds any URL.
+    """
+
+    SECRET = "AAH-le-secret-entier"
+
+    def _run_with(self, token):
+        workdir = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, workdir, True)
+        for name in ("config.py", "restart_clean.py"):
+            shutil.copy(REPO / name, workdir / name)
+        env = {k: v for k, v in os.environ.items() if k != "TELEGRAM_BOT_TOKEN"}
+        env["TELEGRAM_BOT_TOKEN"] = token
+        try:
+            # The refusal happens before the first request, so this returns at
+            # once. A timeout means the guard did not fire and the script is
+            # already talking to Telegram with the token in the URL — which is
+            # the failure itself, and deserves to be reported as one rather
+            # than as a slow test.
+            return subprocess.run([sys.executable, str(workdir / "restart_clean.py")],
+                                  capture_output=True, text=True, timeout=15,
+                                  env=env, cwd=str(workdir))
+        except subprocess.TimeoutExpired:
+            self.fail("restart_clean did not refuse the malformed token: it "
+                      "started requesting URLs that carry it")
+
+    def test_a_token_with_a_space_is_refused_without_being_echoed(self):
+        out = self._run_with(f"1234567890:{self.SECRET} coupé")
+        self.assertNotEqual(out.returncode, 0)
+        self.assertNotIn(self.SECRET, out.stdout + out.stderr)
+
+    def test_a_token_with_a_control_character_is_refused_too(self):
+        out = self._run_with(f"1234567890:{self.SECRET}\x01")
+        self.assertNotEqual(out.returncode, 0)
+        self.assertNotIn(self.SECRET, out.stdout + out.stderr)
+
+    def test_the_refusal_says_what_is_wrong(self):
+        out = self._run_with(f"1234567890:{self.SECRET} coupé")
+        self.assertRegex(out.stdout + out.stderr, r"(?i)espace|contrôle")
 
 
 class NoLeakedIdentifierTests(unittest.TestCase):

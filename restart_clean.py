@@ -12,6 +12,15 @@ import config  # noqa: F401 — importing it reads .env, which the token below n
 BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
 if not BOT_TOKEN:
     raise SystemExit("TELEGRAM_BOT_TOKEN manquant dans .env")
+if any(c.isspace() or ord(c) < 32 for c in BOT_TOKEN):
+    # Refused rather than sent: the token is part of every URL below, and
+    # http.client.InvalidURL quotes the whole URL back in its message. The three
+    # `print(f"-> Erreur: {e}")` further down would then put the entire token on
+    # stdout — the output an operator pastes into an issue. Checked on the
+    # characters that actually trigger it, not on a guessed token format.
+    raise SystemExit(
+        "TELEGRAM_BOT_TOKEN contient une espace ou un caractère de contrôle : "
+        "corrigez-le dans .env (un jeton n'en contient jamais).")
 BASE_URL = f'https://api.telegram.org/bot{BOT_TOKEN}'
 
 # The bot id, not a slice of the token: this script's output is exactly what an
