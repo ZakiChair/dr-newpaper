@@ -5,18 +5,10 @@ import re
 import os
 import urllib.request
 from typing import List, Dict
-from pathlib import Path
+
+import config  # noqa: F401 — imported for its .env loading, which must precede the reads below
 
 TELEGRAM_API = "https://api.telegram.org/bot"
-
-# Load .env
-env_file = Path(__file__).parent / ".env"
-if env_file.exists():
-    for line in env_file.read_text().splitlines():
-        line = line.strip()
-        if line and not line.startswith("#") and "=" in line:
-            k, v = line.split("=", 1)
-            os.environ[k.strip()] = v.strip()
 
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")

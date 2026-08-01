@@ -22,7 +22,8 @@ TELEGRAM_CHAT_ID=...
 # Obligatoire uniquement si le chat ci-dessus est un groupe ou un canal (id négatif) :
 # les identifiants d'utilisateurs autorisés à piloter le bot, séparés par des virgules.
 # TELEGRAM_ALLOWED_USERS=123456789,987654321
-# Optionnel : modèle MiniMax centralisé
+# Optionnel : modèle MiniMax, pour TOUS les appels — résumés, analyses
+# approfondies, méta-analyses et digests.
 DR_NEWPAPER_MODEL=MiniMax-M3
 ```
 

@@ -24,12 +24,17 @@ import logging
 import urllib.request
 import urllib.error
 from typing import List, Dict, Optional, Any
-from pathlib import Path
+
+import config
 
 logger = logging.getLogger(__name__)
 
 MINIMAX_API = "https://api.minimax.io/v1/chat/completions"
-DEFAULT_MODEL = "MiniMax-M3"
+# The model every call here defaults to. Taken from config rather than repeated:
+# this constant is what actually reaches the API payload, so while it was a
+# separate literal, DR_NEWPAPER_MODEL could only ever change the name in
+# send_digest's payload — the summaries and meta-analyses kept calling M3.
+DEFAULT_MODEL = config.DEFAULT_MODEL
 
 PROMPT_TEMPLATE = """Résume cet article académique en 3 phrases maximum. Focus sur : contribution principale, méthode, et résultats clés.
 
@@ -53,20 +58,14 @@ Summary (in English):"""
 
 
 def _get_key():
-    """Return the existing MiniMax API key without replacing or hardcoding it."""
-    env_value = os.getenv("MINIMAX_API_KEY", "").strip()
-    if env_value:
-        return env_value
+    """Return the existing MiniMax API key without replacing or hardcoding it.
 
-    env_file = Path(__file__).parent / ".env"
-    if env_file.exists():
-        for line in env_file.read_text().splitlines():
-            line = line.strip()
-            if line and not line.startswith("#") and "=" in line:
-                key, value = line.split("=", 1)
-                if key.strip() == "MINIMAX_API_KEY":
-                    return value.strip().strip('"').strip("'")
-    return ""
+    The .env fallback that used to live here is gone: importing config now reads
+    the file into the environment before this module is even defined, so the
+    branch could never fire again. It also stripped quotes one at a time rather
+    than as a matching pair, which made it a fourth reader of the format.
+    """
+    return os.getenv("MINIMAX_API_KEY", "").strip()
 
 
 def _strip_think(content: str) -> str:

@@ -209,7 +209,10 @@ class CrossReaderAgreementTests(unittest.TestCase):
             "IGNORE_MOI", "exportIGNORE_MOI")
 
     def setUp(self):
-        self.repo = _FakeRepo(env_text=self.FIXTURE, scripts=("lib.sh",))
+        # config.py is copied in, not imported from the real repo: importing it
+        # loads the .env sitting next to it, so the operator's own file would
+        # win over this fixture — and, precedence being what it is, silently.
+        self.repo = _FakeRepo(env_text=self.FIXTURE, scripts=("lib.sh", "config.py"))
         self.addCleanup(self.repo.cleanup)
 
     def _clean_env(self):
@@ -228,11 +231,12 @@ class CrossReaderAgreementTests(unittest.TestCase):
         return json.loads(out.stdout.strip().splitlines()[-1])
 
     def _read_with_python(self):
+        # No explicit path: importing the copied config reads the .env beside it,
+        # which is the same default path load_env takes on the shell side.
         script = (
             "import json, os, sys; sys.path.insert(0, %r); import config; "
-            "config.load_env_file(%r); "
             "print(json.dumps({k: os.environ.get(k) for k in %r}))"
-            % (str(REPO), str(self.repo.dir / ".env"), list(self.KEYS))
+            % (str(self.repo.dir), list(self.KEYS))
         )
         out = subprocess.run(["python3", "-c", script], capture_output=True, text=True,
                              timeout=60, env=self._clean_env())

@@ -17,33 +17,6 @@ DEFAULT_DB_PATH = PROJECT_DIR / "research_terminal.db"
 # them from elsewhere filed exports next to the shell while the articles they
 # describe stayed in the repo. Every front end imports this instead.
 DOSSIER_BASE = PROJECT_DIR / "Dossier"
-DEFAULT_MODEL = os.getenv("DR_NEWPAPER_MODEL", "MiniMax-M3")
-DEFAULT_LANG = os.getenv("DR_NEWPAPER_LANG", "fr")
-
-
-def scihub_enabled(explicit: bool | None = None) -> bool:
-    """Resolve whether Sci-Hub is an allowed PDF-download fallback, at call time.
-
-    Sci-Hub is *opt-in*: an operator who configured nothing never reaches it.
-    Downloading paywalled articles through it infringes copyright in most
-    jurisdictions, so the deliberate act of setting the variable is what carries
-    the operator's consent — a default-on fallback would make that choice for
-    them. An explicit caller value still wins; otherwise Sci-Hub is OFF unless
-    ``DR_NEWPAPER_ALLOW_SCIHUB`` is set to ``1``/``true``/``yes``/``on``.
-
-    The check is an *allow*-list, not a deny-list: an unrecognised or empty
-    value (a typo, a blank line in .env) leaves Sci-Hub off rather than
-    silently enabling it. .strip() so a whitespace-padded opt-in from a docker
-    --env-file / EnvironmentFile is still read, matching load_env_file.
-    """
-    if explicit is not None:
-        return bool(explicit)
-    return os.getenv("DR_NEWPAPER_ALLOW_SCIHUB", "0").strip().lower() in {"1", "true", "yes", "on"}
-
-
-# Back-compat module constant — an *import-time snapshot* of the opt-in
-# resolution. Prefer ``scihub_enabled()`` so a runtime opt-in is honoured.
-ALLOW_SCIHUB = scihub_enabled()
 
 
 def parse_env_line(line: str) -> "tuple[str, str] | None":
@@ -75,6 +48,63 @@ def parse_env_line(line: str) -> "tuple[str, str] | None":
     if len(value) >= 2 and value[0] == value[-1] and value[0] in ("'", '"'):
         value = value[1:-1]
     return name, value
+
+
+def load_env_file(path: "str | Path | None" = None) -> None:
+    """Load a ``.env`` file without overriding existing environment values.
+
+    The single entry point for reading ``.env``. Line syntax lives in
+    :func:`parse_env_line`, mirrored by ``lib.sh``.
+
+    An already-exported value wins, matching python-dotenv and ``lib.sh``: an
+    operator running ``TELEGRAM_CHAT_ID=999 ./daily_digest.sh`` to try something
+    out means it, and a file should not overrule what they just typed.
+    """
+    env_path = Path(path) if path else PROJECT_DIR / ".env"
+    if not env_path.exists():
+        return
+    for line in env_path.read_text().splitlines():
+        parsed = parse_env_line(line)
+        if parsed and parsed[0] not in os.environ:
+            os.environ[parsed[0]] = parsed[1]
+
+
+# Read .env here, before anything below reads the environment, and before any
+# other module gets the chance to. Asking each entry point to call this first
+# was tried and does not hold: bot.py, pdf_sender.py and send_digest.py
+# remembered, run.py, research_terminal.py, research_tui.py and dispatcher.py
+# did not — and even the three that remembered called it *after* importing this
+# module, so the constants below were already frozen from a .env nobody had
+# read. Import order is invisible at the call site; this is not.
+load_env_file()
+
+DEFAULT_MODEL = os.getenv("DR_NEWPAPER_MODEL", "MiniMax-M3")
+DEFAULT_LANG = os.getenv("DR_NEWPAPER_LANG", "fr")
+
+
+def scihub_enabled(explicit: bool | None = None) -> bool:
+    """Resolve whether Sci-Hub is an allowed PDF-download fallback, at call time.
+
+    Sci-Hub is *opt-in*: an operator who configured nothing never reaches it.
+    Downloading paywalled articles through it infringes copyright in most
+    jurisdictions, so the deliberate act of setting the variable is what carries
+    the operator's consent — a default-on fallback would make that choice for
+    them. An explicit caller value still wins; otherwise Sci-Hub is OFF unless
+    ``DR_NEWPAPER_ALLOW_SCIHUB`` is set to ``1``/``true``/``yes``/``on``.
+
+    The check is an *allow*-list, not a deny-list: an unrecognised or empty
+    value (a typo, a blank line in .env) leaves Sci-Hub off rather than
+    silently enabling it. .strip() so a whitespace-padded opt-in from a docker
+    --env-file / EnvironmentFile is still read, matching load_env_file.
+    """
+    if explicit is not None:
+        return bool(explicit)
+    return os.getenv("DR_NEWPAPER_ALLOW_SCIHUB", "0").strip().lower() in {"1", "true", "yes", "on"}
+
+
+# Back-compat module constant — an *import-time snapshot* of the opt-in
+# resolution. Prefer ``scihub_enabled()`` so a runtime opt-in is honoured.
+ALLOW_SCIHUB = scihub_enabled()
 
 
 def allowed_user_ids() -> set[int]:
@@ -163,24 +193,3 @@ def is_authorized(chat_id: object, user_id: object = None) -> bool:
 DEFAULT_SOURCES = ["pubmed", "crossref", "openalex"]
 DEFAULT_DEEP_SOURCES = ["pubmed", "crossref", "openalex", "europe_pmc", "biorxiv", "medrxiv"]
 DEFAULT_MAX_RESULTS = 5
-
-
-def load_env_file(path: "str | Path | None" = None) -> None:
-    """Load a ``.env`` file without overriding existing environment values.
-
-    The single entry point for reading ``.env`` — bot.py, pdf_sender.py and
-    send_digest.py each carried their own copy of this loop, which is how they
-    came to disagree with the cron scripts about what a line means. Line syntax
-    lives in :func:`parse_env_line`, mirrored by ``lib.sh``.
-
-    An already-exported value wins, matching python-dotenv and ``lib.sh``: an
-    operator running ``TELEGRAM_CHAT_ID=999 ./daily_digest.sh`` to try something
-    out means it, and a file should not overrule what they just typed.
-    """
-    env_path = Path(path) if path else PROJECT_DIR / ".env"
-    if not env_path.exists():
-        return
-    for line in env_path.read_text().splitlines():
-        parsed = parse_env_line(line)
-        if parsed and parsed[0] not in os.environ:
-            os.environ[parsed[0]] = parsed[1]
