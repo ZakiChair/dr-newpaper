@@ -24,6 +24,8 @@ import urllib.parse
 from typing import Dict, Optional
 from pathlib import Path
 
+import config
+
 logger = logging.getLogger(__name__)
 
 # Load .env
@@ -46,7 +48,7 @@ os.makedirs(PDF_CACHE_DIR, exist_ok=True)
 # (the /tmp cache is volatile). Overridable via env for tests / custom layouts.
 PDF_LIBRARY_DIR = os.getenv(
     "DR_NEWPAPER_PDF_DIR",
-    str(Path(__file__).parent / "Dossier" / "pdfs"),
+    str(config.DOSSIER_BASE / "pdfs"),
 )
 
 

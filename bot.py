@@ -538,8 +538,11 @@ async def button_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     # CallbackQueryHandler takes no chat filter, so the allow-list is enforced
     # here — otherwise the inline buttons would be an unguarded way in.
     chat = update.effective_chat
-    if not config.is_authorized(chat.id if chat else None):
-        _log.warning("Callback refusé pour le chat %s", chat.id if chat else "?")
+    user = update.effective_user
+    if not config.is_authorized(chat.id if chat else None,
+                                user.id if user else None):
+        _log.warning("Callback refusé pour le chat %s (utilisateur %s)",
+                     chat.id if chat else "?", user.id if user else "?")
         await query.answer(text="Accès refusé.", show_alert=True)
         return
     await query.answer()
@@ -636,6 +639,23 @@ def main():
     # this, gating on the chat would also start accepting channel posts, whose
     # update.message is None — every handler below dereferences it.
     only_operator = filters.Chat(chat_id=operator_chat) & filters.UpdateType.MESSAGES
+
+    # A negative id is a group, supergroup or channel — a chat other people can
+    # be added to, including by someone other than the operator. Matching the
+    # chat is then no longer matching a person, so a shared chat additionally
+    # requires the sender to be named. A private chat needs none of this:
+    # Telegram gives it the operator's own id, so it already holds one human.
+    if operator_chat < 0:
+        allowed_users = config.allowed_user_ids()
+        if not allowed_users:
+            _log.error(
+                "TELEGRAM_CHAT_ID=%s is a group or channel, so it names a place "
+                "rather than a person, and anyone added to it would inherit the "
+                "bot. Set TELEGRAM_ALLOWED_USERS to the comma-separated Telegram "
+                "user ids allowed to drive it, or point TELEGRAM_CHAT_ID at your "
+                "private chat.", operator_chat)
+            sys.exit(1)
+        only_operator &= filters.User(user_id=allowed_users)
     app.add_handler(CommandHandler("start", cmd_start, filters=only_operator))
     app.add_handler(CommandHandler("help", cmd_help, filters=only_operator))
     app.add_handler(CommandHandler("search", cmd_search, filters=only_operator))

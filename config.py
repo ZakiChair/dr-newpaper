@@ -6,6 +6,12 @@ from pathlib import Path
 
 PROJECT_DIR = Path(__file__).resolve().parent
 DEFAULT_DB_PATH = PROJECT_DIR / "research_terminal.db"
+
+# The one library root. Anchored to this file, never to the working directory:
+# the CLI and the TUI each used to build a relative path of their own, so running
+# them from elsewhere filed exports next to the shell while the articles they
+# describe stayed in the repo. Every front end imports this instead.
+DOSSIER_BASE = PROJECT_DIR / "Dossier"
 DEFAULT_MODEL = os.getenv("DR_NEWPAPER_MODEL", "MiniMax-M3")
 DEFAULT_LANG = os.getenv("DR_NEWPAPER_LANG", "fr")
 
@@ -35,17 +41,51 @@ def scihub_enabled(explicit: bool | None = None) -> bool:
 ALLOW_SCIHUB = scihub_enabled()
 
 
-def is_authorized(chat_id: object) -> bool:
-    """Whether ``chat_id`` may drive the Telegram bot.
+def allowed_user_ids() -> set[int]:
+    """The people allowed to drive the bot from a shared chat.
+
+    Read from ``TELEGRAM_ALLOWED_USERS`` (comma-separated Telegram user ids).
+    Only consulted when the operator chat is a group or channel — see
+    :func:`is_authorized`. Unset means the empty set, never "everyone".
+
+    Unparsable entries are dropped rather than trusted: dropping one can only
+    take access away. A wholly malformed list therefore collapses to empty,
+    which ``bot.main()`` refuses to start on, so the mistake surfaces at
+    startup instead of granting anyone anything.
+    """
+    raw = os.getenv("TELEGRAM_ALLOWED_USERS", "")
+    users = set()
+    for entry in raw.split(","):
+        entry = entry.strip()
+        if not entry:
+            continue
+        try:
+            users.add(int(entry))
+        except ValueError:
+            continue
+    return users
+
+
+def is_authorized(chat_id: object, user_id: object = None) -> bool:
+    """Whether an update from ``chat_id``, sent by ``user_id``, may drive the bot.
 
     Only the operator chat named by ``TELEGRAM_CHAT_ID`` is allowed. With the
     variable unset the answer is always False — the bot has no owner to serve,
     so it must serve nobody. Telegram bots are discoverable by name, and every
     command spends the operator's own MiniMax quota and network identity.
 
-    A single id (not a list) on purpose: ``telegram_sender`` and ``pdf_sender``
-    read the same variable as the *destination* chat, so a comma-separated
-    value would silently break message delivery.
+    A chat is a *place*, and a group is a place other people can be let into,
+    so matching the chat alone is only sufficient where the place holds one
+    person. Telegram gives a private chat the user's own id, so a positive
+    ``TELEGRAM_CHAT_ID`` already identifies exactly one human and needs nothing
+    more. Group, supergroup and channel ids are negative; there the sender must
+    also appear in :func:`allowed_user_ids`, which is empty until an operator
+    fills it — a group whose member list a third party can extend must not
+    inherit the bot.
+
+    A single chat id (not a list) on purpose: ``telegram_sender`` and
+    ``pdf_sender`` read the same variable as the *destination* chat, so a
+    comma-separated value would silently break message delivery.
 
     Compared as numbers, not as text, to match ``bot.main()``: it parses the
     same variable with ``int()`` before handing it to ``filters.Chat``. Under a
@@ -58,7 +98,15 @@ def is_authorized(chat_id: object) -> bool:
     if not operator:
         return False
     try:
-        return int(chat_id) == int(operator)
+        operator_chat = int(operator)
+        if int(chat_id) != operator_chat:
+            return False
+    except (TypeError, ValueError):
+        return False
+    if operator_chat > 0:
+        return True
+    try:
+        return int(user_id) in allowed_user_ids()
     except (TypeError, ValueError):
         return False
 

@@ -6,9 +6,11 @@ from pathlib import Path
 from typing import List, Dict
 from datetime import datetime
 
-# Resolved from this file's own location so the repo stays movable. The former
-# absolute path pointed into /tmp, which the OS wipes on reboot.
-RECHERCHE_BASE = Path(__file__).resolve().parent / "Dossier"
+import config
+
+# The shared library root (config.DOSSIER_BASE), kept under its historical name
+# for the callers that already import it.
+RECHERCHE_BASE = config.DOSSIER_BASE
 
 # User-visible library for compiled meta-analysis documents. Overridable via env
 # (tests point this at a tmp dir; never write into the user's real Dossier).

@@ -19,6 +19,9 @@ MINIMAX_API_KEY=...
 TELEGRAM_BOT_TOKEN=...
 # Obligatoire : seul ce chat peut piloter le bot. Sans lui, bot.py refuse de démarrer.
 TELEGRAM_CHAT_ID=...
+# Obligatoire uniquement si le chat ci-dessus est un groupe ou un canal (id négatif) :
+# les identifiants d'utilisateurs autorisés à piloter le bot, séparés par des virgules.
+# TELEGRAM_ALLOWED_USERS=123456789,987654321
 # Optionnel : modèle MiniMax centralisé
 DR_NEWPAPER_MODEL=MiniMax-M3
 ```
@@ -32,11 +35,21 @@ ouvert est un bot que des inconnus font travailler à vos frais. Les commandes
 venues d'un autre chat sont ignorées, et les boutons en ligne répondent
 « Accès refusé ».
 
-L'autorisation porte sur le **chat**, pas sur la personne. En conversation
-privée les deux se confondent, mais si vous mettez là l'identifiant d'un groupe
-— tentant, puisque la même variable désigne aussi la destination des digests —
-alors **tout membre du groupe pilote le bot**, y compris quelqu'un ajouté plus
-tard par un tiers. Pour un usage personnel, indiquez votre chat privé.
+Un chat désigne un **lieu**, et un groupe est un lieu où d'autres peuvent
+entrer. En conversation privée la distinction est vide : Telegram donne au chat
+l'identifiant de son unique occupant, donc rien de plus n'est requis.
+
+Si `TELEGRAM_CHAT_ID` désigne un groupe ou un canal — tentant, puisque la même
+variable sert aussi de destination aux digests, et leurs identifiants sont
+négatifs — il faut alors nommer les personnes autorisées :
+
+```bash
+TELEGRAM_ALLOWED_USERS=123456789,987654321
+```
+
+Sans cette liste, le bot **refuse de démarrer** sur un chat partagé plutôt que
+de se laisser piloter par quiconque y est ajouté, aujourd'hui ou plus tard.
+La variable est ignorée pour un chat privé.
 
 ### Récupération des PDF
 
@@ -116,7 +129,8 @@ python3 research_terminal.py compare 1 2 3
 
 Modules principaux :
 
-- `config.py` — configuration centralisée, modèle `MiniMax-M3`, chemin DB, liste d'autorisation du bot (`is_authorized()`), résolveur Sci-Hub (`scihub_enabled()`, désactivé par défaut).
+- `config.py` — configuration centralisée, modèle `MiniMax-M3`, chemin DB, racine unique de la bibliothèque (`DOSSIER_BASE`), liste d'autorisation du bot (`is_authorized()`), résolveur Sci-Hub (`scihub_enabled()`, désactivé par défaut).
+- `lib.sh` — préambule partagé des scripts cron : lecture de `.env` (mêmes règles que les chargeurs Python).
 - `normalization.py` — normalisation DOI/titre, clés canoniques, fusion métadonnées.
 - `storage.py` — SQLite : articles, summaries, scores, watchlists, hits, pdfs, notes.
 - `scoring.py` — score nouveauté / niveau de preuve / pertinence clinique / risque.
@@ -178,6 +192,10 @@ evidence_table.csv
 bibliography.bib
 articles.json
 ```
+
+Tout est écrit sous `Dossier/` **dans le dépôt** — articles, PDF, méta-analyses
+et dossiers exportés — quel que soit le répertoire d'où vous lancez l'outil. Le
+CLI accepte `--output-dir` pour écrire ailleurs ponctuellement.
 
 ## Tests
 

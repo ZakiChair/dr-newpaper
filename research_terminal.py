@@ -14,7 +14,7 @@ from typing import Iterable, Optional, Sequence
 
 sys.path.insert(0, str(Path(__file__).parent))
 
-from config import DEFAULT_DB_PATH, DEFAULT_LANG, DEFAULT_MAX_RESULTS, DEFAULT_SOURCES  # noqa: E402
+from config import DEFAULT_DB_PATH, DEFAULT_LANG, DEFAULT_MAX_RESULTS, DEFAULT_SOURCES, DOSSIER_BASE  # noqa: E402
 from dispatcher import ALL_SOURCES, RechercheDispatcher  # noqa: E402
 import deep_research  # noqa: E402
 import meta_analysis as meta_mod  # noqa: E402
@@ -309,7 +309,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 print(render_dashboard(w["query"], articles, sources, "watch", w["lang"], ansi)); print(f"Nouveaux articles: {len(new_ids)} / {len(ids)}"); return 0
         if args.cmd == "digest":
             rows = store.list_articles(limit=args.limit, query=args.query)
-            out_dir = Path(args.output_dir) if args.output_dir else Path("Dossier") / (args.query or "research_dossier").replace(" ", "_")
+            out_dir = Path(args.output_dir) if args.output_dir else DOSSIER_BASE / (args.query or "research_dossier").replace(" ", "_")
             written = research_exports.export_research_dossier(out_dir, args.query or "Research Desk", rows, args.since)
             print("Dossier exporté:"); [print(f"- {k}: {v}") for k, v in written.items()]; return 0
         if args.cmd == "compare":

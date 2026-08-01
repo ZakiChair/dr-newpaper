@@ -48,17 +48,30 @@ needs_telegram = unittest.skipUnless(
 
 OPERATOR_CHAT = 4242
 FOREIGN_CHAT = 9999
+# What a mocked download returns. A bare MagicMock would be worse than useless
+# here: button_callback does `open(result["path"], "rb")`, and open() accepts an
+# integer file descriptor — MagicMock.__index__ yields 1, so the call opens
+# stdout and the enclosing `with` closes it, breaking whichever test runs next.
+_DOWNLOAD_FAILED = {"success": False, "path": "", "method": "", "error": "test"}
+# Group ids are negative — that sign is what tells is_authorized a chat may hold
+# more than one person.
+OPERATOR_GROUP = -1004242
+OPERATOR_USER = 777
+OTHER_MEMBER = 888
 
 
-def _message_update(chat_id, text="bonjour"):
+def _message_update(chat_id, text="bonjour", user_id=None):
     """A minimal but *real* Update, enough for a filter to judge it.
 
     Commands carry a ``bot_command`` entity: that entity, not the leading slash,
     is what ``filters.COMMAND`` looks at, so a fixture without it would describe
-    a message Telegram never sends.
+    a message Telegram never sends. ``user_id`` defaults to the chat id, which is
+    what Telegram does for a private chat; pass it to model a group member.
     """
-    chat = Chat(id=chat_id, type=Chat.PRIVATE)
-    user = User(id=chat_id, first_name="Test", is_bot=False)
+    chat = Chat(id=chat_id,
+                type=Chat.SUPERGROUP if chat_id < 0 else Chat.PRIVATE)
+    user = User(id=chat_id if user_id is None else user_id,
+                first_name="Test", is_bot=False)
     entities = ()
     if text.startswith("/"):
         entities = (MessageEntity(
@@ -233,9 +246,12 @@ class ButtonCallbackAuthorizationTests(unittest.TestCase):
         update = SimpleNamespace(
             callback_query=query,
             effective_chat=SimpleNamespace(id=chat_id) if chat_id is not None else None,
+            # A private chat carries the user's own id as the chat id.
+            effective_user=SimpleNamespace(id=chat_id) if chat_id is not None else None,
         )
         with mock.patch.dict(os.environ, {"TELEGRAM_CHAT_ID": str(OPERATOR_CHAT)}), \
              mock.patch.object(bot_module.pdf_sender, "download_pdf") as download:
+            download.return_value = _DOWNLOAD_FAILED
             asyncio.run(bot_module.button_callback(update, mock.AsyncMock()))
         return query, download
 
@@ -266,12 +282,96 @@ class ButtonCallbackAuthorizationTests(unittest.TestCase):
         update = SimpleNamespace(
             callback_query=query,
             effective_chat=SimpleNamespace(id=OPERATOR_CHAT),
+            effective_user=SimpleNamespace(id=OPERATOR_CHAT),
         )
         with mock.patch.dict(os.environ):
             os.environ.pop("TELEGRAM_CHAT_ID", None)
             with mock.patch.object(bot_module.pdf_sender, "download_pdf") as download:
                 asyncio.run(bot_module.button_callback(update, mock.AsyncMock()))
         download.assert_not_called()
+
+
+@needs_telegram
+class GroupOperatorChatWiringTests(unittest.TestCase):
+    """Pointing the bot at a group must not hand it to the group's members."""
+
+    def test_a_group_without_a_user_list_refuses_to_start(self):
+        with mock.patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("TELEGRAM_ALLOWED_USERS", None)
+            with self.assertRaises(SystemExit):
+                _run_main_capturing_handlers(str(OPERATOR_GROUP))
+
+    def test_a_group_with_an_unparsable_user_list_refuses_to_start(self):
+        with mock.patch.dict(os.environ, {"TELEGRAM_ALLOWED_USERS": "moi, toi"}):
+            with self.assertRaises(SystemExit):
+                _run_main_capturing_handlers(str(OPERATOR_GROUP))
+
+    def test_the_refusal_names_the_variable_to_set(self):
+        with mock.patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("TELEGRAM_ALLOWED_USERS", None)
+            with mock.patch.object(bot_module, "CHAT_ID", str(OPERATOR_GROUP)), \
+                 mock.patch.object(bot_module, "BOT_TOKEN", "123456:TESTTOKEN"), \
+                 mock.patch.object(bot_module, "Application"), \
+                 self.assertLogs(bot_module._log, level="ERROR") as logged:
+                with self.assertRaises(SystemExit):
+                    bot_module.main()
+        self.assertIn("TELEGRAM_ALLOWED_USERS", "\n".join(logged.output))
+
+    def _handlers_for_group(self):
+        with mock.patch.dict(os.environ, {"TELEGRAM_ALLOWED_USERS": str(OPERATOR_USER)}):
+            return _run_main_capturing_handlers(str(OPERATOR_GROUP)).handlers
+
+    def test_in_a_group_only_the_listed_user_reaches_the_handlers(self):
+        listed = _message_update(OPERATOR_GROUP, user_id=OPERATOR_USER)
+        other = _message_update(OPERATOR_GROUP, user_id=OTHER_MEMBER)
+        checked = 0
+        for handler in self._handlers_for_group():
+            if getattr(handler, "filters", None) is None:
+                continue
+            checked += 1
+            with self.subTest(handler=type(handler).__name__):
+                self.assertTrue(handler.filters.check_update(listed))
+                self.assertFalse(handler.filters.check_update(other),
+                                 "another group member reaches the bot")
+        self.assertGreaterEqual(checked, 9, "expected 8 commands + the text handler")
+
+    def test_a_private_operator_chat_gains_no_user_filter(self):
+        # The ordinary setup must keep working with no new variable to set.
+        with mock.patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("TELEGRAM_ALLOWED_USERS", None)
+            app = _run_main_capturing_handlers(str(OPERATOR_CHAT))
+        update = _message_update(OPERATOR_CHAT)
+        for handler in app.handlers:
+            if getattr(handler, "filters", None) is None:
+                continue
+            self.assertTrue(handler.filters.check_update(update))
+
+
+@needs_telegram
+class GroupButtonCallbackTests(unittest.TestCase):
+    """Inline buttons carry no chat filter, so the group rule must hold in code."""
+
+    def _fire(self, user_id, allowed):
+        query = mock.AsyncMock()
+        query.data = "pdf:10.1234/abc"
+        query.message = SimpleNamespace(chat_id=OPERATOR_GROUP)
+        update = SimpleNamespace(
+            callback_query=query,
+            effective_chat=SimpleNamespace(id=OPERATOR_GROUP),
+            effective_user=SimpleNamespace(id=user_id),
+        )
+        env = {"TELEGRAM_CHAT_ID": str(OPERATOR_GROUP), "TELEGRAM_ALLOWED_USERS": allowed}
+        with mock.patch.dict(os.environ, env), \
+             mock.patch.object(bot_module.pdf_sender, "download_pdf") as download:
+            download.return_value = _DOWNLOAD_FAILED
+            asyncio.run(bot_module.button_callback(update, mock.AsyncMock()))
+        return download
+
+    def test_another_group_member_cannot_press_the_button(self):
+        self._fire(OTHER_MEMBER, allowed=str(OPERATOR_USER)).assert_not_called()
+
+    def test_the_listed_user_can(self):
+        self._fire(OPERATOR_USER, allowed=str(OPERATOR_USER)).assert_called_once()
 
 
 @needs_telegram
@@ -294,6 +394,12 @@ class AllowListAgreementTests(unittest.TestCase):
                     parsed = int(raw)
                 except ValueError:
                     continue  # main() exits on these; nothing to agree about
+                if parsed < 0:
+                    # A group id is deliberately asymmetric: the handler filter
+                    # gains filters.User on top, so comparing it to the chat
+                    # filter alone would compare two different questions.
+                    # GroupOperatorChatWiringTests checks the composed filter.
+                    continue
                 filter_verdict = bool(
                     filters.Chat(chat_id=parsed).check_update(_message_update(parsed)))
                 with mock.patch.dict(os.environ, {"TELEGRAM_CHAT_ID": raw}):
@@ -365,6 +471,15 @@ class HandlerRegistrationSourceTests(unittest.TestCase):
         # exactly where nobody would notice the guard going missing.
         source = ast.unparse(self._main_function())
         self.assertRegex(source, r"operator_chat == 0|not operator_chat")
+
+    def test_main_requires_a_user_list_for_a_shared_chat(self):
+        # Behavioural coverage is in GroupOperatorChatWiringTests, which skips
+        # without python-telegram-bot — i.e. on a bare checkout.
+        source = ast.unparse(self._main_function())
+        self.assertIn("allowed_user_ids", source)
+        self.assertIn("filters.User", source)
+        self.assertRegex(source, r"operator_chat < 0",
+                         "the user list must be required for negative (shared) chat ids")
 
     def test_the_operator_filter_still_restricts_the_update_type(self):
         # The one line most likely to be "cleaned up" as redundant: without it,

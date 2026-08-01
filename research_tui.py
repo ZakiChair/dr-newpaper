@@ -44,7 +44,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
 
-from config import DEFAULT_DB_PATH, DEFAULT_DEEP_SOURCES, DEFAULT_LANG, DEFAULT_MAX_RESULTS, DEFAULT_SOURCES, scihub_enabled
+from config import DEFAULT_DB_PATH, DEFAULT_DEEP_SOURCES, DEFAULT_LANG, DEFAULT_MAX_RESULTS, DEFAULT_SOURCES, DOSSIER_BASE, scihub_enabled
 from storage import ResearchStore
 import research_exports
 import scoring
@@ -3749,7 +3749,7 @@ def run_curses(db_path: str | Path = DEFAULT_DB_PATH, theme: str = "bloomberg") 
                 # and change its subject (the search query it tracks).
                 begin_edit_selected_topic(state)
             elif key in (ord("e"), ord("E")):
-                out = Path("Dossier") / "tui_export"
+                out = DOSSIER_BASE / "tui_export"
                 rows_snapshot = _active_rows(state)[:50]  # snapshot before the worker runs
                 try:
                     written = run_with_spinner(
