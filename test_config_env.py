@@ -10,6 +10,7 @@ supplies defaults must never be able to do that.
 Each case runs in a fresh interpreter against a copy of config.py, so nothing
 here depends on — or touches — the operator's own .env.
 """
+import ast
 import os
 import shutil
 import subprocess
@@ -134,11 +135,29 @@ class EmptyMeansUnsetTests(unittest.TestCase):
 
 
 class SideEffectImportTests(unittest.TestCase):
-    """telegram_sender reads its token from an import whose effect is the point.
+    """Two modules read their credentials thanks to an import that looks unused.
 
-    `import config` there looks unused and a tidy-up would remove it, leaving a
-    module that silently finds no token. This is what would notice.
+    `telegram_sender` and `restart_clean` name no symbol from config: they import
+    it for the .env reading it performs. A tidy-up — or a linter's unused-import
+    rule — would take the line out and leave a module that finds no token. This
+    is what would notice.
     """
+
+    def test_restart_clean_still_imports_config_before_reading_its_token(self):
+        # Same load-bearing import, checked on the source rather than by running
+        # it: importing restart_clean executes the script, which calls Telegram.
+        source = (REPO / "restart_clean.py").read_text()
+        tree = ast.parse(source)
+        import_line = next(
+            node.lineno for node in ast.walk(tree)
+            if isinstance(node, ast.Import)
+            and any(alias.name == "config" for alias in node.names))
+        token_line = next(
+            node.lineno for node in ast.walk(tree)
+            if isinstance(node, ast.Assign)
+            and any(getattr(t, "id", "") == "BOT_TOKEN" for t in node.targets))
+        self.assertLess(import_line, token_line,
+                        "config must be imported before the token is read")
 
     def test_the_token_reaches_telegram_sender_from_the_file_alone(self):
         workdir = Path(tempfile.mkdtemp())
