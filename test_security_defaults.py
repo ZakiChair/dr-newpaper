@@ -155,20 +155,22 @@ class TokenNeverReachesStdoutTests(unittest.TestCase):
 
     SECRET = "AAH-le-secret-entier"
 
-    def _run_with(self, token):
+    def _run_with(self, token, script="restart_clean.py"):
         workdir = Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, workdir, True)
-        for name in ("config.py", "restart_clean.py"):
+        for name in ("config.py", script):
             shutil.copy(REPO / name, workdir / name)
         env = {k: v for k, v in os.environ.items() if k != "TELEGRAM_BOT_TOKEN"}
         env["TELEGRAM_BOT_TOKEN"] = token
+        env.setdefault("TELEGRAM_CHAT_ID", "4242")
+        env.setdefault("MINIMAX_API_KEY", "sk-test")
         try:
             # The refusal happens before the first request, so this returns at
             # once. A timeout means the guard did not fire and the script is
             # already talking to Telegram with the token in the URL — which is
             # the failure itself, and deserves to be reported as one rather
             # than as a slow test.
-            return subprocess.run([sys.executable, str(workdir / "restart_clean.py")],
+            return subprocess.run([sys.executable, str(workdir / script)],
                                   capture_output=True, text=True, timeout=15,
                                   env=env, cwd=str(workdir))
         except subprocess.TimeoutExpired:
@@ -188,6 +190,21 @@ class TokenNeverReachesStdoutTests(unittest.TestCase):
     def test_the_refusal_says_what_is_wrong(self):
         out = self._run_with(f"1234567890:{self.SECRET} coupé")
         self.assertRegex(out.stdout + out.stderr, r"(?i)espace|contrôle")
+
+    def test_send_digest_is_guarded_by_the_same_rule(self):
+        # Second sink for the same cause: send() has no try/except, so the
+        # exception becomes a traceback on stderr — with the token in it.
+        out = self._run_with(f"1234567890:{self.SECRET} coupé", script="send_digest.py")
+        self.assertNotEqual(out.returncode, 0)
+        self.assertNotIn(self.SECRET, out.stdout + out.stderr)
+
+    def test_a_trailing_space_is_trimmed_rather_than_refused(self):
+        # A paste artefact, not a mistake worth stopping for — and the .env
+        # loader already trims, so refusing here would differ from that path.
+        with mock.patch.dict(os.environ,
+                             {"TELEGRAM_BOT_TOKEN": f"1234567890:{self.SECRET} "}):
+            self.assertEqual(config.require_telegram_token(),
+                             f"1234567890:{self.SECRET}")
 
 
 class NoLeakedIdentifierTests(unittest.TestCase):

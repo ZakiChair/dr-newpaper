@@ -127,6 +127,30 @@ def scihub_enabled(explicit: bool | None = None) -> bool:
 ALLOW_SCIHUB = scihub_enabled()
 
 
+def require_telegram_token() -> str:
+    """The bot token, or an exit whose message never quotes it.
+
+    The token is part of every Telegram API URL, and ``http.client.InvalidURL``
+    quotes the whole URL back in its message — so a token carrying a space or a
+    control character puts *itself* on stdout through any ``print(e)``, or on
+    stderr through an uncaught traceback. Both happened: restart_clean.py prints
+    the exception three times, send_digest.py lets it propagate.
+
+    Surrounding whitespace is stripped rather than refused — an exported value
+    with a trailing space is a paste artefact, not a mistake worth stopping for.
+    What remains inside is refused, because no real token contains it and the
+    cost of finding out at request time is the secret itself.
+    """
+    token = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
+    if not token:
+        raise SystemExit("TELEGRAM_BOT_TOKEN manquant : renseignez-le dans .env.")
+    if any(c.isspace() or ord(c) < 32 for c in token):
+        raise SystemExit(
+            "TELEGRAM_BOT_TOKEN contient une espace ou un caractère de contrôle : "
+            "corrigez-le dans .env (un jeton n'en contient jamais).")
+    return token
+
+
 def allowed_user_ids() -> set[int]:
     """The people allowed to drive the bot from a shared chat.
 

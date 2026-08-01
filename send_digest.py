@@ -21,7 +21,10 @@ def _required(name):
             f"de lancer ce script.")
 
 
-TOKEN = _required('TELEGRAM_BOT_TOKEN')
+# Not _required: send() lets an exception propagate, and a token carrying a
+# space makes that exception a traceback with the token in it — see
+# config.require_telegram_token.
+TOKEN = config.require_telegram_token()
 CHAT_ID = _required('TELEGRAM_CHAT_ID')
 MM_KEY = _required('MINIMAX_API_KEY')
 
