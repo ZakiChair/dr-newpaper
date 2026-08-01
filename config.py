@@ -57,9 +57,13 @@ def load_env_file(path: "str | Path | None" = None) -> None:
     The single entry point for reading ``.env``. Line syntax lives in
     :func:`parse_env_line`, mirrored by ``lib.sh``.
 
-    An already-exported value wins, matching python-dotenv and ``lib.sh``: an
-    operator running ``TELEGRAM_CHAT_ID=999 ./daily_digest.sh`` to try something
-    out means it, and a file should not overrule what they just typed.
+    An already-exported value wins, matching ``lib.sh``: an operator running
+    ``TELEGRAM_CHAT_ID=999 ./daily_digest.sh`` to try something out means it,
+    and a file should not overrule what they just typed. An *empty* one does
+    not count as a value, though — ``export MINIMAX_API_KEY=$UNSET`` in a
+    wrapper script would otherwise mask the real key sitting in the file, and
+    silently: nothing distinguishes a blanked variable from a missing one at
+    the point of use.
     """
     env_path = Path(path) if path else PROJECT_DIR / ".env"
     if not env_path.exists():
@@ -78,7 +82,7 @@ def load_env_file(path: "str | Path | None" = None) -> None:
         return
     for line in content.splitlines():
         parsed = parse_env_line(line)
-        if parsed and parsed[0] not in os.environ:
+        if parsed and not os.environ.get(parsed[0], "").strip():
             os.environ[parsed[0]] = parsed[1]
 
 
@@ -91,8 +95,11 @@ def load_env_file(path: "str | Path | None" = None) -> None:
 # read. Import order is invisible at the call site; this is not.
 load_env_file()
 
-DEFAULT_MODEL = os.getenv("DR_NEWPAPER_MODEL", "MiniMax-M3")
-DEFAULT_LANG = os.getenv("DR_NEWPAPER_LANG", "fr")
+# `or` rather than a getenv default: a variable present but empty reads as "" ,
+# and DEFAULT_MODEL goes straight into the API payload as the model name. A
+# blank line in .env must fall back, not ship `model: ""`.
+DEFAULT_MODEL = os.getenv("DR_NEWPAPER_MODEL", "").strip() or "MiniMax-M3"
+DEFAULT_LANG = os.getenv("DR_NEWPAPER_LANG", "").strip() or "fr"
 
 
 def scihub_enabled(explicit: bool | None = None) -> bool:

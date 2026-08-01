@@ -58,10 +58,16 @@ load_env() {
     [ -n "$_le_key" ] || continue
 
     # An already-exported value wins, as config.load_env_file does: someone who
-    # ran `TELEGRAM_CHAT_ID=999 ./daily_digest.sh` meant it. printenv rather than
-    # ${!name+set}, which also sees shell variables that were never exported.
-    if ! printenv "$_le_key" >/dev/null 2>&1; then
-      export "$_le_key=$_le_value"
-    fi
+    # ran `TELEGRAM_CHAT_ID=999 ./daily_digest.sh` meant it. An empty one does
+    # not count — `export MINIMAX_API_KEY=$UNSET` would otherwise mask the real
+    # key in the file. printenv rather than ${!name+set}, which also sees shell
+    # variables that were never exported.
+    # `case` rather than [ -z ]: $(…) trims trailing newlines but not spaces, so
+    # a variable holding only blanks would read as set here and as empty on the
+    # Python side. "Contains a non-space" is the same question both ask.
+    case "$(printenv "$_le_key" 2>/dev/null)" in
+      *[![:space:]]*) ;;
+      *) export "$_le_key=$_le_value" ;;
+    esac
   done < "$_le_file"
 }

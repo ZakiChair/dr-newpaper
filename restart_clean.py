@@ -7,21 +7,8 @@ en forçant Telegram à fermer les connexions zombies.
 import os, time, json, urllib.request, urllib.error
 from pathlib import Path
 
-# Load env (use python-dotenv when installed, else a tiny built-in parser so the
-# script still runs on a bare environment).
-try:
-    from dotenv import load_dotenv
-except ImportError:
-    def load_dotenv(path=None):
-        env_path = Path(path) if path else Path(__file__).parent / ".env"
-        if env_path.exists():
-            for line in env_path.read_text().splitlines():
-                line = line.strip()
-                if line and not line.startswith("#") and "=" in line:
-                    k, v = line.split("=", 1)
-                    os.environ.setdefault(k.strip(), v.strip())
+import config  # noqa: F401 — importing it reads .env, which the token below needs
 
-load_dotenv(Path(__file__).parent / ".env")
 BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
 if not BOT_TOKEN:
     raise SystemExit("TELEGRAM_BOT_TOKEN manquant dans .env")

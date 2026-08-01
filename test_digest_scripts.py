@@ -85,6 +85,15 @@ class EnvLoadingTests(unittest.TestCase):
         env = self._load("TELEGRAM_CHAT_ID=4242\n", preset={"TELEGRAM_CHAT_ID": "999"})
         self.assertEqual(env.get("TELEGRAM_CHAT_ID"), "999")
 
+    def test_an_empty_export_does_not_count_as_a_value(self):
+        # Same rule as config.load_env_file: `export KEY=$UNSET` must not mask
+        # the real value in the file. Divergence here would be a silent one.
+        for blank in ("", "   "):
+            with self.subTest(exported=repr(blank)):
+                env = self._load("TELEGRAM_CHAT_ID=4242\n",
+                                 preset={"TELEGRAM_CHAT_ID": blank})
+                self.assertEqual(env.get("TELEGRAM_CHAT_ID"), "4242")
+
     def test_a_value_named_like_one_of_the_loader_locals_still_loads(self):
         # The existence check must look at the environment, not at the shell:
         # load_env has locals named file/line/key/value.

@@ -60,10 +60,12 @@ Summary (in English):"""
 def _get_key():
     """Return the existing MiniMax API key without replacing or hardcoding it.
 
-    The .env fallback that used to live here is gone: importing config now reads
-    the file into the environment before this module is even defined, so the
-    branch could never fire again. It also stripped quotes one at a time rather
-    than as a matching pair, which made it a fourth reader of the format.
+    The .env fallback that used to live here is gone: importing config reads the
+    file into the environment before this module is defined, so a key in .env
+    arrives here through os.environ — including when the variable was exported
+    empty, which config treats as absent for exactly this reason. It also
+    stripped quotes one at a time rather than as a matching pair, which made it
+    a fourth reader of the format.
     """
     return os.getenv("MINIMAX_API_KEY", "").strip()
 

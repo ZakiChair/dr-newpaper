@@ -84,6 +84,78 @@ class ImportTimeEnvReadingTests(unittest.TestCase):
             lambda p: p.write_text("DR_NEWPAPER_MODEL=sans-retour-final"))
         self.assertEqual(out.stdout.strip().splitlines()[-1], "sans-retour-final")
 
+    def test_an_empty_value_falls_back_instead_of_shipping_a_blank(self):
+        # DEFAULT_MODEL is the model name in the API payload, so a blank line
+        # in .env must not become `model: ""`.
+        for blank in ("DR_NEWPAPER_MODEL=\n", "DR_NEWPAPER_MODEL=   \n",
+                      "DR_NEWPAPER_MODEL='  '\n"):
+            with self.subTest(line=blank.strip()):
+                out = self._import_config_beside(lambda p, b=blank: p.write_text(b))
+                self.assertEqual(out.stdout.strip().splitlines()[-1], "MiniMax-M3")
+
+
+class EmptyMeansUnsetTests(unittest.TestCase):
+    """A variable exported empty must not mask the value in the file.
+
+    `export MINIMAX_API_KEY=$SOMETHING_UNSET` in a wrapper leaves the name in the
+    environment with nothing in it. Treating that as "already configured" would
+    hide the real key sitting in .env, and nothing at the point of use tells a
+    blanked variable from a missing one.
+    """
+
+    def _key_seen_with(self, exported):
+        workdir = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, workdir, True)
+        for name in ("config.py", "minimax_client.py"):
+            shutil.copy(REPO / name, workdir / name)
+        (workdir / ".env").write_text("MINIMAX_API_KEY=sk-la-vraie-cle\n")
+        env = {k: v for k, v in os.environ.items() if k != "MINIMAX_API_KEY"}
+        if exported is not None:
+            env["MINIMAX_API_KEY"] = exported
+        out = subprocess.run(
+            [sys.executable, "-c",
+             "import sys; sys.path.insert(0, %r); import minimax_client; "
+             "print(minimax_client._get_key())" % str(workdir)],
+            capture_output=True, text=True, timeout=60, env=env, cwd=str(workdir))
+        self.assertEqual(out.returncode, 0, out.stderr)
+        return out.stdout.strip()
+
+    def test_an_empty_export_does_not_hide_the_key_in_the_file(self):
+        self.assertEqual(self._key_seen_with(""), "sk-la-vraie-cle")
+
+    def test_a_whitespace_export_does_not_either(self):
+        self.assertEqual(self._key_seen_with("   "), "sk-la-vraie-cle")
+
+    def test_a_real_export_still_wins(self):
+        self.assertEqual(self._key_seen_with("sk-celle-exportee"), "sk-celle-exportee")
+
+    def test_the_file_supplies_it_when_nothing_is_exported(self):
+        self.assertEqual(self._key_seen_with(None), "sk-la-vraie-cle")
+
+
+class SideEffectImportTests(unittest.TestCase):
+    """telegram_sender reads its token from an import whose effect is the point.
+
+    `import config` there looks unused and a tidy-up would remove it, leaving a
+    module that silently finds no token. This is what would notice.
+    """
+
+    def test_the_token_reaches_telegram_sender_from_the_file_alone(self):
+        workdir = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, workdir, True)
+        for name in ("config.py", "telegram_sender.py"):
+            shutil.copy(REPO / name, workdir / name)
+        (workdir / ".env").write_text("TELEGRAM_BOT_TOKEN=123456:DEPUIS-LE-FICHIER\n")
+        env = {k: v for k, v in os.environ.items()
+               if k not in ("TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID")}
+        out = subprocess.run(
+            [sys.executable, "-c",
+             "import sys; sys.path.insert(0, %r); import telegram_sender; "
+             "print(telegram_sender.BOT_TOKEN)" % str(workdir)],
+            capture_output=True, text=True, timeout=60, env=env, cwd=str(workdir))
+        self.assertEqual(out.returncode, 0, out.stderr)
+        self.assertEqual(out.stdout.strip(), "123456:DEPUIS-LE-FICHIER")
+
 
 if __name__ == "__main__":
     unittest.main()
