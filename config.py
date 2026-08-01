@@ -1,6 +1,7 @@
 """Shared configuration for Dr_NewPaper."""
 from __future__ import annotations
 
+import logging
 import os
 import re
 from pathlib import Path
@@ -63,7 +64,19 @@ def load_env_file(path: "str | Path | None" = None) -> None:
     env_path = Path(path) if path else PROJECT_DIR / ".env"
     if not env_path.exists():
         return
-    for line in env_path.read_text().splitlines():
+    try:
+        content = env_path.read_text()
+    except (OSError, UnicodeDecodeError) as exc:
+        # This runs while the module is being imported, and every module here
+        # imports it, so raising would make the whole project unimportable —
+        # tests included — over a file that only supplies defaults. Warning and
+        # carrying on is safe: the entry points already refuse to run without
+        # the values they actually need, and say which one is missing.
+        logging.getLogger(__name__).warning(
+            "Impossible de lire %s (%s) — variables d'environnement seules.",
+            env_path, exc)
+        return
+    for line in content.splitlines():
         parsed = parse_env_line(line)
         if parsed and parsed[0] not in os.environ:
             os.environ[parsed[0]] = parsed[1]
