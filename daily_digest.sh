@@ -3,10 +3,10 @@
 set -e
 
 # Walk to the real file before locating the repo: a cron job is normally
-# installed as a symlink (ln -s ~/dr-newpaper/daily_digest.sh /usr/local/bin/),
-# and dirname of the link would land in /usr/local/bin. readlink -f would do
-# this in one step but does not exist on macOS. Duplicated in weekly_digest.sh
-# because this is what finds lib.sh in the first place.
+# installed as a symlink into a directory on PATH, and dirname of the link would
+# land there instead. readlink -f would do this in one step but does not exist on
+# macOS. Duplicated in the sibling digest script because this is what finds
+# lib.sh in the first place, so it cannot itself live in lib.sh.
 script=$0
 while [ -L "$script" ]; do
   link=$(readlink "$script")
