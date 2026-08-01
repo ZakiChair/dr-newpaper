@@ -1,11 +1,17 @@
-"""Tests for the security-relevant defaults: Sci-Hub opt-in, bot authorization, repo-local paths.
+"""Tests for the security-relevant defaults of a repo that is published publicly.
 
-These lock down four properties the project must not silently regress:
+These lock down properties the project must not silently regress:
 
 1. Sci-Hub is *opt-in*, never reached by an operator who configured nothing.
-2. The Telegram bot authorizes nobody unless an operator names a chat.
-3. No personal identifier is baked into the (public) sources.
-4. No file points at the pre-extraction monorepo path under /tmp.
+2. The Telegram bot authorizes nobody unless an operator names a chat, and a
+   shared chat additionally needs the people in it named.
+3. No personal identifier is baked into the sources, and no source slices a
+   credential into its output. That last one is a *textual* guard on the shape
+   `NAME[...]`; the leak that mattered came through an exception message
+   instead, and it is `TokenNeverReachesStdoutTests` — which runs the scripts —
+   that holds that line.
+4. Every output path resolves inside the repo rather than the working directory,
+   and nothing points at the pre-extraction monorepo path under /tmp.
 """
 import os
 import re
