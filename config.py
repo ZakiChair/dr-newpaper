@@ -2,7 +2,12 @@
 from __future__ import annotations
 
 import os
+import re
 from pathlib import Path
+
+# What an environment variable may be named. A line whose left-hand side is not
+# one is not an assignment, whatever it looks like.
+_ENV_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 
 PROJECT_DIR = Path(__file__).resolve().parent
 DEFAULT_DB_PATH = PROJECT_DIR / "research_terminal.db"
@@ -61,7 +66,11 @@ def parse_env_line(line: str) -> "tuple[str, str] | None":
         return None
     name, value = line.split("=", 1)
     name, value = name.strip(), value.strip()
-    if not name:
+    # `export FOO=bar` — a .env written to be sourced — is not an assignment to
+    # a variable called "export FOO". Skipping it is the only reading the shell
+    # can share: trimming alone left this side with a name holding a space and
+    # the shell side with "exportFOO", which is a valid name and silently wrong.
+    if not _ENV_NAME.fullmatch(name):
         return None
     if len(value) >= 2 and value[0] == value[-1] and value[0] in ("'", '"'):
         value = value[1:-1]
@@ -87,9 +96,14 @@ def allowed_user_ids() -> set[int]:
         if not entry:
             continue
         try:
-            users.add(int(entry))
+            user = int(entry)
         except ValueError:
             continue
+        # Telegram user ids are strictly positive, so 0 or a negative value is
+        # provably not a person — most likely a chat id pasted into the wrong
+        # variable. Keeping it would let an empty-looking list read as filled.
+        if user > 0:
+            users.add(user)
     return users
 
 

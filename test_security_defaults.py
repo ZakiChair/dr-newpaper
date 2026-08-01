@@ -126,6 +126,12 @@ class SharedChatAuthorizationTests(unittest.TestCase):
         with mock.patch.dict(os.environ, {"TELEGRAM_ALLOWED_USERS": " 555 ,abc,,666 "}):
             self.assertEqual(config.allowed_user_ids(), {555, 666})
 
+    def test_a_chat_id_pasted_into_the_user_list_is_rejected(self):
+        # A negative id is a chat, not a person. Accepting it would make a list
+        # that authorizes nobody look filled, and the bot would start.
+        with mock.patch.dict(os.environ, {"TELEGRAM_ALLOWED_USERS": "-1001234, 0"}):
+            self.assertEqual(config.allowed_user_ids(), set())
+
     def test_an_unset_list_is_empty_not_universal(self):
         with mock.patch.dict(os.environ):
             os.environ.pop("TELEGRAM_ALLOWED_USERS", None)
@@ -159,8 +165,12 @@ class RepoLocalPathTests(unittest.TestCase):
         # under ~/Dossier while the articles they describe sat in the repo.
         import pdf_sender
         self.assertEqual(file_writer.RECHERCHE_BASE, config.DOSSIER_BASE)
-        self.assertEqual(Path(pdf_sender.PDF_LIBRARY_DIR).parent, config.DOSSIER_BASE)
-        self.assertEqual(file_writer.META_LIBRARY_DIR.parent, config.DOSSIER_BASE)
+        # Both are env-overridable and read at import, so an operator who set
+        # one would otherwise see this test fail for doing something supported.
+        if not os.getenv("DR_NEWPAPER_PDF_DIR"):
+            self.assertEqual(Path(pdf_sender.PDF_LIBRARY_DIR).parent, config.DOSSIER_BASE)
+        if not os.getenv("DR_NEWPAPER_META_DIR"):
+            self.assertEqual(file_writer.META_LIBRARY_DIR.parent, config.DOSSIER_BASE)
 
     def test_no_module_anchors_the_library_to_the_working_directory(self):
         # Bans the literal rather than comparing two constants: what must not

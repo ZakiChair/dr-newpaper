@@ -35,9 +35,21 @@ load_env() {
 
     _le_key="${_le_line%%=*}"
     _le_value="${_le_line#*=}"
-    _le_key="${_le_key//[[:space:]]/}"                      # names hold no spaces
+    _le_key="${_le_key#"${_le_key%%[![:space:]]*}"}"        # ltrim
+    _le_key="${_le_key%"${_le_key##*[![:space:]]}"}"        # rtrim
     _le_value="${_le_value#"${_le_value%%[![:space:]]*}"}"  # ltrim
     _le_value="${_le_value%"${_le_value##*[![:space:]]}"}"  # rtrim
+    # A name that cannot be an environment variable means the line is not an
+    # assignment: `export FOO=bar` is a .env written to be sourced, not a
+    # variable called "export FOO". Deleting the space instead of skipping the
+    # line produced "exportFOO" — a valid name, and silently the wrong one.
+    case "$_le_key" in
+      [A-Za-z_]*) ;;
+      *) continue ;;
+    esac
+    case "$_le_key" in
+      *[!A-Za-z0-9_]*) continue ;;
+    esac
     # One matching pair of surrounding quotes, as config.parse_env_line does.
     case "$_le_value" in
       \"?*\") _le_value="${_le_value#\"}"; _le_value="${_le_value%\"}" ;;

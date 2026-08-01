@@ -200,9 +200,11 @@ bibliography.bib
 articles.json
 ```
 
-Tout est écrit sous `Dossier/` **dans le dépôt** — articles, PDF, méta-analyses
-et dossiers exportés — quel que soit le répertoire d'où vous lancez l'outil. Le
-CLI accepte `--output-dir` pour écrire ailleurs ponctuellement.
+Articles, PDF, méta-analyses et dossiers exportés atterrissent sous `Dossier/`
+**dans le dépôt**, quel que soit le répertoire d'où vous lancez l'outil. Trois
+échappatoires : `--output-dir` sur le CLI, et les variables
+`DR_NEWPAPER_PDF_DIR` / `DR_NEWPAPER_META_DIR`. Le cache de téléchargement des
+PDF reste dans `/tmp`, où il est censé être volatil.
 
 ## Tests
 

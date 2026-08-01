@@ -199,10 +199,14 @@ class CrossReaderAgreementTests(unittest.TestCase):
         "  DR_NEWPAPER_LANG = fr ",
         "MINIMAX_API_KEY=abc==",
         "AVEC_DIESE=valeur#pas-un-commentaire",
+        # Not assignments: a .env written to be sourced, and a name with a space.
+        "export IGNORE_MOI=1",
+        "NOM INVALIDE=2",
     ]) + "\n"
 
     KEYS = ("TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID", "DR_NEWPAPER_MODEL",
-            "DR_NEWPAPER_LANG", "MINIMAX_API_KEY", "AVEC_DIESE")
+            "DR_NEWPAPER_LANG", "MINIMAX_API_KEY", "AVEC_DIESE",
+            "IGNORE_MOI", "exportIGNORE_MOI")
 
     def setUp(self):
         self.repo = _FakeRepo(env_text=self.FIXTURE, scripts=("lib.sh",))
@@ -247,6 +251,8 @@ class CrossReaderAgreementTests(unittest.TestCase):
             "DR_NEWPAPER_LANG": "fr",                # trimmed
             "MINIMAX_API_KEY": "abc==",              # split on the first = only
             "AVEC_DIESE": "valeur#pas-un-commentaire",
+            "IGNORE_MOI": None,                      # `export FOO=…` is not an
+            "exportIGNORE_MOI": None,                # assignment, under any name
         })
 
 
