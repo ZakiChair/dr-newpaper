@@ -359,6 +359,28 @@ class HandlerRegistrationSourceTests(unittest.TestCase):
         self.assertIn("if not CHAT_ID", source)
         self.assertIn("sys.exit(1)", source)
 
+    def test_main_rejects_a_zero_chat_id(self):
+        # Behavioural coverage of this guard lives in MainStartupGuardTests,
+        # which skips without python-telegram-bot — i.e. on a bare checkout,
+        # exactly where nobody would notice the guard going missing.
+        source = ast.unparse(self._main_function())
+        self.assertRegex(source, r"operator_chat == 0|not operator_chat")
+
+    def test_the_operator_filter_still_restricts_the_update_type(self):
+        # The one line most likely to be "cleaned up" as redundant: without it,
+        # gating on the chat *widens* the surface to channel posts. Asserted on
+        # the source because the behavioural test needs the dependency.
+        assignment = next(
+            node for node in ast.walk(self._main_function())
+            if isinstance(node, ast.Assign)
+            and any(getattr(t, "id", "") == "only_operator" for t in node.targets)
+        )
+        expression = ast.unparse(assignment.value)
+        self.assertIn("UpdateType.MESSAGES", expression,
+                      f"only_operator no longer restricts the update type: {expression}")
+        self.assertIn("Chat", expression,
+                      f"only_operator no longer restricts the chat: {expression}")
+
     def test_button_callback_checks_authorization_before_acting_on_the_payload(self):
         tree = ast.parse(BOT_SOURCE)
         func = next(n for n in tree.body
